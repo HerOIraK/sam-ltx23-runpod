@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy ComfyUI outside /workspace so it's not hidden by volume mounts
 RUN mkdir -p /opt && \
-    cp -a /workspace/ComfyUI /opt/ComfyUI
+    cp -a /opt/comfyui-baked /opt/ComfyUI
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
