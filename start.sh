@@ -46,6 +46,6 @@ nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspac
 
 cd "$COMFYUI_DIR"
 
-exec python main.py \
+exec python3 main.py \
     --listen 0.0.0.0 \
     --port 8188
