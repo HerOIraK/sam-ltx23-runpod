@@ -17,6 +17,9 @@ RUN mkdir -p /opt && \
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
+# Remove any pre-existing folders from base image to prevent git clone collisions
+RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes
+
 # Clone required custom nodes
 RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git && \
@@ -32,6 +35,7 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI.git && \
     git clone --depth 1 https://github.com/sipherxyz/comfyui-art-venture.git && \
     git clone --depth 1 https://github.com/plugcrypt/CRT-Nodes.git
+
 
 # Install requirements supplied by each custom-node package
 RUN set -e; \
