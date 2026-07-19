@@ -50,12 +50,15 @@ RUN set -e; \
 RUN mkdir -p /opt/ComfyUI/user/default/workflows
 COPY workflows/ /opt/ComfyUI/user/default/workflows/
 
+# Install code-server
+RUN curl -fsSL https://code-server.dev/install.sh | sh
+
 # Add startup and provisioning scripts
 COPY start.sh /start.sh
 COPY download-models.sh /download-models.sh
 
 RUN chmod +x /start.sh /download-models.sh
 
-EXPOSE 8188
+EXPOSE 8188 8000
 
 CMD ["/start.sh"]
