@@ -1,4 +1,4 @@
-FROM runpod/comfyui:cuda12.2.0-py310-ubuntu22.04
+FROM runpod/comfyui:cuda13.0
 
 USER root
 
@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy ComfyUI outside /workspace so it's not hidden by volume mounts
 RUN mkdir -p /opt && \
-    (cp -a /opt/comfyui-baked /opt/ComfyUI 2>/dev/null || cp -a /workspace/ComfyUI /opt/ComfyUI)
+    cp -a /opt/comfyui-baked /opt/ComfyUI
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
