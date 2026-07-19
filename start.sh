@@ -42,7 +42,8 @@ fi
 # Start VS Code code-server on port 8000 in the background
 echo "Starting code-server on port 8000..."
 mkdir -p /workspace/code-server
-nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspace/code-server &
+ln -sf / /workspace/root-fs
+nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspace/code-server /workspace &
 
 cd "$COMFYUI_DIR"
 
