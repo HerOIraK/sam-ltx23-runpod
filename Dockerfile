@@ -19,7 +19,7 @@ RUN mkdir -p /opt && \
 RUN git config --global --add safe.directory /opt/ComfyUI && \
     cd /opt/ComfyUI && \
     (git pull || true) && \
-    pip install --no-cache-dir --upgrade comfyui-frontend
+    pip install --no-cache-dir --upgrade comfyui-frontend-package
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
