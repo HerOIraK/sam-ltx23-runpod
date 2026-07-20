@@ -15,6 +15,11 @@ RUN apt-get update && apt-get install -y \
 RUN mkdir -p /opt && \
     cp -a /opt/comfyui-baked /opt/ComfyUI
 
+# Update ComfyUI core & frontend to the absolute latest version
+RUN cd /opt/ComfyUI && \
+    (git pull || true) && \
+    pip install --no-cache-dir --upgrade comfyui-frontend
+
 WORKDIR /opt/ComfyUI/custom_nodes
 
 # Remove any pre-existing folders from base image to prevent git clone collisions
