@@ -24,12 +24,15 @@ ln -s "$VOLUME_DIR/input" "$COMFYUI_DIR/input"
 rm -rf "$COMFYUI_DIR/output"
 ln -s "$VOLUME_DIR/output" "$COMFYUI_DIR/output"
 
-# Copy included workflows to persistent user storage
-mkdir -p "$VOLUME_DIR/user/default/workflows"
+# Copy included workflows and default settings to persistent user storage
+mkdir -p "$VOLUME_DIR/user/default/workflows" "$VOLUME_DIR/user/__manager"
 
 cp -n \
     "$COMFYUI_DIR/user/default/workflows/"*.json \
     "$VOLUME_DIR/user/default/workflows/" 2>/dev/null || true
+
+cp -n "$COMFYUI_DIR/user/default/comfy.settings.json" "$VOLUME_DIR/user/default/comfy.settings.json" 2>/dev/null || true
+cp -n "$COMFYUI_DIR/user/__manager/config.ini" "$VOLUME_DIR/user/__manager/config.ini" 2>/dev/null || true
 
 rm -rf "$COMFYUI_DIR/user"
 ln -s "$VOLUME_DIR/user" "$COMFYUI_DIR/user"

@@ -53,9 +53,11 @@ RUN set -e; \
         fi; \
     done
 
-# Add your workflows to the image
-RUN mkdir -p /opt/ComfyUI/user/default/workflows
+# Add default workflows and settings to the image
+RUN mkdir -p /opt/ComfyUI/user/default/workflows /opt/ComfyUI/user/__manager
 COPY workflows/ /opt/ComfyUI/user/default/workflows/
+COPY config/comfy.settings.json /opt/ComfyUI/user/default/comfy.settings.json
+COPY config/config.ini /opt/ComfyUI/user/__manager/config.ini
 
 # Install code-server
 RUN curl -fsSL https://code-server.dev/install.sh | sh
