@@ -16,7 +16,8 @@ RUN mkdir -p /opt && \
     cp -a /opt/comfyui-baked /opt/ComfyUI
 
 # Update ComfyUI core & frontend to the absolute latest version
-RUN cd /opt/ComfyUI && \
+RUN git config --global --add safe.directory /opt/ComfyUI && \
+    cd /opt/ComfyUI && \
     (git pull || true) && \
     pip install --no-cache-dir --upgrade comfyui-frontend
 
