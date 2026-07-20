@@ -58,4 +58,5 @@ cd "$COMFYUI_DIR"
 exec python3 main.py \
     --listen 0.0.0.0 \
     --port 8188 \
-    --enable-cors-header
+    --enable-cors-header \
+    --enable-manager
