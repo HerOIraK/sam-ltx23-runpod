@@ -35,8 +35,8 @@ rm -rf "$COMFYUI_DIR/user"
 ln -s "$VOLUME_DIR/user" "$COMFYUI_DIR/user"
 
 # Download models only when requested
-if [ "${AUTO_DOWNLOAD_MODELS:-false}" = "true" ]; then
-    /download-models.sh
+if [ "${AUTO_DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_LTX_MODELS:-false}" = "true" ]; then
+    /download-ltx-models.sh
 fi
 
 if [ "${AUTO_DOWNLOAD_SCAIL2_MODELS:-false}" = "true" ]; then
