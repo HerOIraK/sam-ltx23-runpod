@@ -79,25 +79,36 @@ Go to the **RunPod Console → Templates → New Template** and configure the fi
 
 Under the **Environment Variables** section of the template config, add:
 
-1. **Enable Model Auto-Download**:
-   - **Key**: `AUTO_DOWNLOAD_MODELS`
+1. **Enable LTX 2.3 Model Auto-Download**:
+   - **Key**: `AUTO_DOWNLOAD_LTX_MODELS` (or `AUTO_DOWNLOAD_MODELS`)
    - **Value**: `true`
-2. **Hugging Face Authentication Token (Gated Access)**:
+2. **Enable SCAIL-2 Model Auto-Download**:
+   - **Key**: `AUTO_DOWNLOAD_SCAIL2_MODELS`
+   - **Value**: `true`
+3. **Hugging Face Authentication Token (Gated Access & Maximum Speed)**:
    - **Key**: `HF_TOKEN`
-   - **Value**: `your_huggingface_read_token` *(Needed to download gated weights like Google Gemma 3 and Lightricks LTX 2.3 upscalers).*
+   - **Value**: `your_huggingface_read_token` *(Crucial to unlock gated Hugging Face repositories like LTX 2.3 and Gemma 3, and to route downloads through high-speed CDN servers).*
 
 ---
 
-## 3. Included Workflows
+## 3. Dedicated Download Scripts
+You can run these scripts directly from your VS Code terminal at any time:
+- `/download-ltx-models.sh` (or `/download-models.sh`): Downloads all 8 LTX 2.3 & Gemma 3 models at maximum uncapped speed via Rust-accelerated `hf_transfer`.
+- `/download-scail2-models.sh`: Downloads all 8 SCAIL-2 & Wan 2.1 models at maximum uncapped speed via `hf_transfer`.
+
+---
+
+## 4. Included Workflows
 
 Workflows are copied automatically to `/workspace/user/default/workflows/` on launch:
 
 1. **`ltxDirector2SEED_v10.json`**: An all-in-one timeline editing workflow utilizing the LTX Director node, supporting frame scheduling, camera prompts, and prompt relaying.
 2. **`director_00103-audio_Reddit.json`**: An advanced multi-stage timeline workflow featuring ControlNet, custom audio reference inputs, lipsync mapping, and RTX Video Super Resolution upscaling.
+3. **`Motion_control_SCAIL2_workflow.json`**: A high-fidelity ControlNet / Motion Control workflow leveraging SCAIL-2 (Wan 2.1) and Segment Anything (SAM 3.1) for video-to-video motion guidance.
 
 ---
 
-## 4. Installed Custom Nodes
+## 5. Installed Custom Nodes
 
 The image includes the following node packages cloned directly into `/opt/ComfyUI/custom_nodes`:
 - `ComfyUI-LTXVideo` (LTX video core nodes)

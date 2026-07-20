@@ -50,13 +50,16 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
 
 
 # Install requirements supplied by each custom-node package
+# Also force CPU-only onnxruntime to prevent cuDNN 9 / CUDA 13 symbol conflicts in DWPose/ONNX
 RUN set -e; \
     for dir in /opt/ComfyUI/custom_nodes/*; do \
         if [ -f "$dir/requirements.txt" ]; then \
             echo "Installing requirements: $dir"; \
             pip install --no-cache-dir -r "$dir/requirements.txt"; \
         fi; \
-    done
+    done; \
+    pip uninstall -y onnxruntime-gpu || true; \
+    pip install --no-cache-dir onnxruntime
 
 # Add default workflows and settings to the image
 RUN mkdir -p /opt/ComfyUI/user/default/workflows /opt/ComfyUI/user/__manager

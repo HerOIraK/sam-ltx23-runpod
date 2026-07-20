@@ -1,82 +1,50 @@
 #!/bin/bash
 set -e
 
-MODELS="/workspace/models"
+# Model directory paths
+MODEL_DIR="/workspace/models"
+DIFFUSION_DIR="${MODEL_DIR}/diffusion_models"
+TEXT_ENC_DIR="${MODEL_DIR}/text_encoders"
+VAE_DIR="${MODEL_DIR}/vae"
+UPSCALE_DIR="${MODEL_DIR}/latent_upscale_models"
+LORA_DIR="${MODEL_DIR}/loras/LTX2"
 
-mkdir -p \
-    "$MODELS/diffusion_models" \
-    "$MODELS/text_encoders" \
-    "$MODELS/vae" \
-    "$MODELS/latent_upscale_models" \
-    "$MODELS/loras/LTX2"
+echo "Creating LTX 2.3 model target directories..."
+mkdir -p "$DIFFUSION_DIR" "$TEXT_ENC_DIR" "$VAE_DIR" "$UPSCALE_DIR" "$LORA_DIR"
 
-download_file() {
-    URL="$1"
-    OUTPUT="$2"
+# Enable Hugging Face Ultra-Fast Rust Parallel Transfer Engine
+export HF_HUB_ENABLE_HF_TRANSFER=1
+export HF_TOKEN="${HF_TOKEN:-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}"
 
-    if [ -f "$OUTPUT" ] && [ ! -f "${OUTPUT}.aria2" ]; then
-        echo "Already downloaded: $OUTPUT"
-        return
-    fi
+echo "=== STARTING LTX 2.3 MODEL DOWNLOADS (MAX UNCAPPED SPEED) ==="
 
-    echo "Downloading: $OUTPUT"
+# 1. Base Video Model (~23 GB)
+echo "[1/8] Downloading Base Video Model..."
+hf download Kijai/LTX2.3_comfy diffusion_models/ltx-2.3-22b-distilled-1.1_transformer_only_fp8_scaled.safetensors --local-dir "$DIFFUSION_DIR" --local-dir-use-symlinks False
 
-    ARIA_ARGS=(
-        --continue=true
-        --max-connection-per-server=16
-        --split=16
-        --min-split-size=1M
-        --auto-file-renaming=false
-    )
+# 2. Text Encoders & Projections (~12 GB)
+echo "[2/8] Downloading Gemma 3 Text Encoder..."
+hf download GitMylo/LTX-2-comfy_gemma_fp8_e4m3fn gemma_3_12B_it_fp8_e4m3fn.safetensors --local-dir "$TEXT_ENC_DIR" --local-dir-use-symlinks False
 
-    if [ -n "${HF_TOKEN:-}" ]; then
-        ARIA_ARGS+=(--header="Authorization: Bearer ${HF_TOKEN}")
-    fi
+echo "[3/8] Downloading Text Projection..."
+hf download Kijai/LTX2.3_comfy text_encoders/ltx-2.3_text_projection_bf16.safetensors --local-dir "$TEXT_ENC_DIR" --local-dir-use-symlinks False
 
-    aria2c \
-        "${ARIA_ARGS[@]}" \
-        --dir="$(dirname "$OUTPUT")" \
-        --out="$(basename "$OUTPUT")" \
-        "$URL"
-}
+# 3. VAE Models (~500 MB)
+echo "[4/8] Downloading Video VAE..."
+hf download Kijai/LTX2.3_comfy vae/LTX23_video_vae_bf16.safetensors --local-dir "$VAE_DIR" --local-dir-use-symlinks False
 
-echo "Downloading LTX 2.3 model package..."
+echo "[5/8] Downloading Audio VAE..."
+hf download Kijai/LTX2.3_comfy vae/LTX23_audio_vae_bf16.safetensors --local-dir "$VAE_DIR" --local-dir-use-symlinks False
 
-# 1. Diffusion Models
-download_file \
-    "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/diffusion_models/ltx-2.3-22b-distilled-1.1_transformer_only_fp8_scaled.safetensors" \
-    "$MODELS/diffusion_models/ltx-2.3-22b-distilled-1.1_transformer_only_fp8_scaled.safetensors"
+echo "[6/8] Downloading Preview VAE..."
+hf download Kijai/LTX2.3_comfy vae/taeltx2_3.safetensors --local-dir "$VAE_DIR" --local-dir-use-symlinks False
 
-# 2. Text Encoders & Projections
-download_file \
-    "https://huggingface.co/GitMylo/LTX-2-comfy_gemma_fp8_e4m3fn/resolve/main/gemma_3_12B_it_fp8_e4m3fn.safetensors" \
-    "$MODELS/text_encoders/gemma_3_12B_it_fp8_e4m3fn.safetensors"
+# 4. Latent Upscale Model (~1.2 GB)
+echo "[7/8] Downloading Video Spatial Upscaler..."
+hf download Lightricks/LTX-2.3 ltx-2.3-spatial-upscaler-x2-1.1.safetensors --local-dir "$UPSCALE_DIR" --local-dir-use-symlinks False
 
-download_file \
-    "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/text_encoders/ltx-2.3_text_projection_bf16.safetensors" \
-    "$MODELS/text_encoders/ltx-2.3_text_projection_bf16.safetensors"
+# 5. IC-LoRA Union Control (~620 MB)
+echo "[8/8] Downloading Motion Control LoRA..."
+hf download Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors --local-dir "$LORA_DIR" --local-dir-use-symlinks False
 
-# 3. VAE Models
-download_file \
-    "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/taeltx2_3.safetensors" \
-    "$MODELS/vae/taeltx2_3.safetensors"
-
-download_file \
-    "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_audio_vae_bf16.safetensors" \
-    "$MODELS/vae/LTX23_audio_vae_bf16.safetensors"
-
-download_file \
-    "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_video_vae_bf16.safetensors" \
-    "$MODELS/vae/LTX23_video_vae_bf16.safetensors"
-
-# 4. Latent Upscale Models
-download_file \
-    "https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors" \
-    "$MODELS/latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
-
-# 5. IC-LoRA Union Control Lora
-download_file \
-    "https://huggingface.co/Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control/resolve/main/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors" \
-    "$MODELS/loras/LTX2/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"
-
-echo "Model provisioning completed."
+echo "=== ALL LTX 2.3 MODEL DOWNLOADS COMPLETED ==="
