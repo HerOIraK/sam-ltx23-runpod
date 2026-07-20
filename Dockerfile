@@ -63,8 +63,9 @@ RUN curl -fsSL https://code-server.dev/install.sh | sh
 # Add startup and provisioning scripts
 COPY start.sh /start.sh
 COPY download-models.sh /download-models.sh
+COPY download-scail2-models.sh /download-scail2-models.sh
 
-RUN chmod +x /start.sh /download-models.sh
+RUN chmod +x /start.sh /download-models.sh /download-scail2-models.sh
 
 EXPOSE 8188 8000
 

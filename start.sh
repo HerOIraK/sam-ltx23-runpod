@@ -39,6 +39,10 @@ if [ "${AUTO_DOWNLOAD_MODELS:-false}" = "true" ]; then
     /download-models.sh
 fi
 
+if [ "${AUTO_DOWNLOAD_SCAIL2_MODELS:-false}" = "true" ]; then
+    /download-scail2-models.sh
+fi
+
 # Start VS Code code-server on port 8000 in the background
 echo "Starting code-server on port 8000..."
 mkdir -p /workspace/code-server
