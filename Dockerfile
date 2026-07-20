@@ -16,10 +16,15 @@ RUN mkdir -p /opt && \
     cp -a /opt/comfyui-baked /opt/ComfyUI
 
 # Update ComfyUI core, frontend, and manager to the absolute latest version
+# Also install hf_transfer for ultra-fast (500MB/s+) Hugging Face downloads
 RUN git config --global --add safe.directory /opt/ComfyUI && \
     cd /opt/ComfyUI && \
     (git pull || true) && \
-    pip install --no-cache-dir --upgrade comfyui-frontend-package comfyui-manager
+    pip install --no-cache-dir --upgrade \
+        comfyui-frontend-package \
+        comfyui-manager \
+        huggingface_hub[cli] \
+        hf_transfer
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
