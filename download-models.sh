@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Model directory paths
-MODEL_DIR="/workspace/models"
+# Model directory paths under /workspace/ComfyUI/models
+MODEL_DIR="/workspace/ComfyUI/models"
 DIFFUSION_DIR="${MODEL_DIR}/diffusion_models"
 TEXT_ENC_DIR="${MODEL_DIR}/text_encoders"
 VAE_DIR="${MODEL_DIR}/vae"

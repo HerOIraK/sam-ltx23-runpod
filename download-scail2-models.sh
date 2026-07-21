@@ -1,15 +1,15 @@
 #!/bin/bash
 set -e
 
-# Model directory paths
-MODEL_DIR="/workspace/models"
+# Model directory paths under /workspace/ComfyUI/models
+MODEL_DIR="/workspace/ComfyUI/models"
 DIFFUSION_DIR="${MODEL_DIR}/diffusion_models"
 TEXT_ENC_DIR="${MODEL_DIR}/text_encoders"
 CLIP_VISION_DIR="${MODEL_DIR}/clip_vision"
 VAE_DIR="${MODEL_DIR}/vae"
 SAM_DIR="${MODEL_DIR}/checkpoints"
 LORA_DIR="${MODEL_DIR}/loras"
-RIFE_DIR="${MODEL_DIR}/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife"
+RIFE_DIR="/workspace/ComfyUI/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife"
 
 echo "Creating SCAIL-2 model target directories..."
 mkdir -p "$DIFFUSION_DIR" "$TEXT_ENC_DIR" "$CLIP_VISION_DIR" "$VAE_DIR" "$SAM_DIR" "$LORA_DIR" "$RIFE_DIR"

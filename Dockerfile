@@ -1,4 +1,4 @@
-FROM runpod/comfyui:cuda12.4.2
+FROM runpod/comfyui:cuda13.0
 
 USER root
 
