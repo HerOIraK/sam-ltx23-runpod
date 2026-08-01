@@ -125,4 +125,7 @@ The image includes the following node packages cloned directly into `/opt/ComfyU
 - `comfyui-art-venture` (Art Venture preprocess pipelines)
 - `CRT-Nodes` (Graph utils, WAN & LTX samplers)
 - `ComfyUI-DaSiWa-Nodes` (DaSiWa status switches, resolution calculators, LLM integration, metadata & video tools)
+- `comfyui_controlnet_aux` (ControlNet preprocessors like DWPose, OpenPose, Depth, Canny, LineArt, Zoe, etc.)
+- `ComfyUI-Frame-Interpolation` (VFI frame interpolation models: RIFE, FILM, AMT, etc.)
+- `Civicomfy` (Civitai model downloader and metadata manager inside ComfyUI)
 - `ComfyUI-Manager` (Node update, verification, and diagnostics management)
