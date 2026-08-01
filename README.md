@@ -124,4 +124,5 @@ The image includes the following node packages cloned directly into `/opt/ComfyU
 - `Nvidia_RTX_Nodes_ComfyUI` (NVIDIA RTX Video Super Resolution)
 - `comfyui-art-venture` (Art Venture preprocess pipelines)
 - `CRT-Nodes` (Graph utils, WAN & LTX samplers)
+- `ComfyUI-DaSiWa-Nodes` (DaSiWa status switches, resolution calculators, LLM integration, metadata & video tools)
 - `ComfyUI-Manager` (Node update, verification, and diagnostics management)
