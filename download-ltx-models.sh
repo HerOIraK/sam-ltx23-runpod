@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+export PYTHONUNBUFFERED=1
 export HF_XET_HIGH_PERFORMANCE=1
 
 # Model directory paths
@@ -27,9 +28,25 @@ download_file() {
         echo "[EXISTS] ${target_filename} is already present in ${dest_dir}, skipping download."
     else
         echo "[DOWNLOADING HF] ${repo_id}/${repo_filename} -> ${dest_dir}/${target_filename}..."
-        hf download "$repo_id" "$repo_filename" \
-            --local-dir "$dest_dir" \
-            ${HF_TOKEN:+--token "$HF_TOKEN"}
+        python3 -c "
+import os, sys
+os.environ['PYTHONUNBUFFERED'] = '1'
+from huggingface_hub import hf_hub_download
+
+repo_id = sys.argv[1]
+filename = sys.argv[2]
+local_dir = sys.argv[3]
+token = os.getenv('HF_TOKEN')
+
+print(f'--> Fetching {filename} from {repo_id}...', flush=True)
+hf_hub_download(
+    repo_id=repo_id,
+    filename=filename,
+    local_dir=local_dir,
+    token=token
+)
+print(f'--> Completed {filename}.', flush=True)
+" "$repo_id" "$repo_filename" "$dest_dir"
 
         if [ -f "${dest_dir}/${repo_filename}" ] && [ "${repo_filename}" != "${target_filename}" ]; then
             mv "${dest_dir}/${repo_filename}" "${dest_dir}/${target_filename}"
@@ -42,7 +59,7 @@ download_file() {
     fi
 }
 
-echo "=== STARTING LTX 2.3 MODEL DOWNLOADS VIA HF CLI ==="
+echo "=== STARTING LTX 2.3 MODEL DOWNLOADS WITH LIVE PROGRESS BAR ==="
 
 # 1. Base Video Model (~23 GB)
 echo "[1/8] Base Video Model (ltx-2.3-22b-distilled-1.1_transformer_only_fp8_scaled.safetensors)"
