@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-export HF_HUB_ENABLE_HF_TRANSFER=1
+export HF_XET_HIGH_PERFORMANCE=1
 
 # Model directory paths
 MODEL_DIR="/workspace/models"
@@ -15,6 +15,7 @@ echo "Creating LTX 2.3 model target directories..."
 mkdir -p "$DIFFUSION_DIR" "$TEXT_ENC_DIR" "$VAE_DIR" "$UPSCALE_DIR" "$LORA_DIR"
 
 HF_TOKEN="${HF_TOKEN:-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}"
+export HF_TOKEN
 
 download_file() {
     local repo_id="$1"
@@ -25,10 +26,9 @@ download_file() {
     if [ -f "${dest_dir}/${target_filename}" ]; then
         echo "[EXISTS] ${target_filename} is already present in ${dest_dir}, skipping download."
     else
-        echo "[DOWNLOADING HF HUB] ${repo_id}/${repo_filename} -> ${dest_dir}/${target_filename}..."
-        huggingface-cli download "$repo_id" "$repo_filename" \
+        echo "[DOWNLOADING HF] ${repo_id}/${repo_filename} -> ${dest_dir}/${target_filename}..."
+        hf download "$repo_id" "$repo_filename" \
             --local-dir "$dest_dir" \
-            --local-dir-use-symlinks False \
             ${HF_TOKEN:+--token "$HF_TOKEN"}
 
         if [ -f "${dest_dir}/${repo_filename}" ] && [ "${repo_filename}" != "${target_filename}" ]; then
@@ -42,7 +42,7 @@ download_file() {
     fi
 }
 
-echo "=== STARTING LTX 2.3 MODEL DOWNLOADS VIA HUGGINGFACE-CLI ==="
+echo "=== STARTING LTX 2.3 MODEL DOWNLOADS VIA HF CLI ==="
 
 # 1. Base Video Model (~23 GB)
 echo "[1/8] Base Video Model (ltx-2.3-22b-distilled-1.1_transformer_only_fp8_scaled.safetensors)"
