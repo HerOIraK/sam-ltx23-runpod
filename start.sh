@@ -57,7 +57,7 @@ nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspac
 # Ensure SageAttention is available on RTX 4090 runtime
 if ! python3 -c "import sageattention" 2>/dev/null; then
     echo "📦 Installing SageAttention 2.2.0 on GPU runtime..."
-    pip install --no-cache-dir sageattention==2.2.0 || true
+    pip install --no-cache-dir git+https://github.com/thu-ml/SageAttention.git || pip install --no-cache-dir sageattention || true
 fi
 
 cd "$COMFYUI_DIR"

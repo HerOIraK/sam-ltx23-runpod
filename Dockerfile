@@ -33,7 +33,8 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
 
 # Install SageAttention (requires pre-installed PyTorch & --no-build-isolation)
 # Install SageAttention with explicit GPU Arch targeting
-RUN TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0" pip install --no-cache-dir sageattention==2.2.0 || true
+# Install SageAttention directly from official GitHub repository
+RUN pip install --no-cache-dir git+https://github.com/thu-ml/SageAttention.git || pip install --no-cache-dir sageattention || true
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
