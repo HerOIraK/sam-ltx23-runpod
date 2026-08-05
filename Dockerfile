@@ -16,7 +16,8 @@ RUN mkdir -p /opt && \
     cp -a /opt/comfyui-baked /opt/ComfyUI
 
 # Update ComfyUI core, frontend, and manager to the absolute latest version
-# Also install hf_transfer for ultra-fast (500MB/s+) Hugging Face downloads
+# Also install hf_transfer \
+        sageattention==2.2.0 for ultra-fast (500MB/s+) Hugging Face downloads
 RUN git config --global --add safe.directory /opt/ComfyUI && \
     cd /opt/ComfyUI && \
     (git pull || true) && \
@@ -24,7 +25,8 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
         comfyui-frontend-package \
         comfyui-manager \
         huggingface_hub[cli] \
-        hf_transfer
+        hf_transfer \
+        sageattention==2.2.0
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
