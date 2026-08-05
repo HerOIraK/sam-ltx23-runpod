@@ -34,7 +34,10 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
 # Install SageAttention (requires pre-installed PyTorch & --no-build-isolation)
 # Install SageAttention with explicit GPU Arch targeting
 # Install SageAttention directly from official GitHub repository
+# Install SageAttention Python package (skipping CUDA compile on CPU Docker builder)
+ENV SAGEATTN_SKIP_CUDA_BUILD=1
 RUN pip install --no-cache-dir git+https://github.com/thu-ml/SageAttention.git || pip install --no-cache-dir sageattention || true
+ENV SAGEATTN_SKIP_CUDA_BUILD=0
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
