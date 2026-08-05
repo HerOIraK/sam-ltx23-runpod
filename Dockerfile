@@ -17,7 +17,7 @@ RUN mkdir -p /opt && \
 
 # Update ComfyUI core, frontend, and manager to the absolute latest version
 # Also install hf_transfer \
-        sageattention==2.2.0 for ultra-fast (500MB/s+) Hugging Face downloads
+ for ultra-fast (500MB/s+) Hugging Face downloads
 RUN git config --global --add safe.directory /opt/ComfyUI && \
     cd /opt/ComfyUI && \
     (git pull || true) && \
@@ -26,7 +26,11 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
         comfyui-manager \
         huggingface_hub[cli] \
         hf_transfer \
-        sageattention==2.2.0
+
+
+# Install SageAttention (requires pre-installed PyTorch & --no-build-isolation)
+RUN pip install --no-cache-dir --no-build-isolation sageattention==2.2.0 || \
+    (git clone https://github.com/thu-ml/SageAttention.git /tmp/SageAttention && cd /tmp/SageAttention && pip install --no-cache-dir --no-build-isolation . && rm -rf /tmp/SageAttention)
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
