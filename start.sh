@@ -62,7 +62,7 @@ python3 -c "import sageattention; print('SageAttention module loaded successfull
     export CPATH="/usr/local/cuda/include:${CPATH}"
     export CXX_APPEND_FLAGS="-I/usr/local/cuda/include"
     export NVCC_APPEND_FLAGS="-I/usr/local/cuda/include"
-    (cd /tmp && git clone --depth 1 https://github.com/thu-ml/SageAttention.git && cd SageAttention && TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0" python3 setup.py install && rm -rf /tmp/SageAttention) || true
+    (cd /tmp && git clone --depth 1 https://github.com/thu-ml/SageAttention.git && cd SageAttention && python3 setup.py install && rm -rf /tmp/SageAttention) || true
 }
 
 cd "$COMFYUI_DIR"
