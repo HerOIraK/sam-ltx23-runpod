@@ -2,9 +2,6 @@ FROM runpod/comfyui:cuda13.0
 
 USER root
 
-ENV TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
-ENV CUDA_HOME=/usr/local/cuda
-
 RUN apt-get update && apt-get install -y \
     git \
     git-lfs \
@@ -27,12 +24,11 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
         comfyui-frontend-package \
         comfyui-manager \
         huggingface_hub[cli] \
-        hf_transfer \
+        hf_transfer
 
-
-# Install SageAttention Python package using --no-build-isolation so setuptools detects installed PyTorch
+# Install SageAttention Python package (skipping CUDA compile on CPU Docker builder)
 ENV SAGEATTN_SKIP_CUDA_BUILD=1
-RUN pip install --no-cache-dir --no-build-isolation git+https://github.com/thu-ml/SageAttention.git || true
+RUN pip install --no-cache-dir git+https://github.com/thu-ml/SageAttention.git || true
 ENV SAGEATTN_SKIP_CUDA_BUILD=0
 
 WORKDIR /opt/ComfyUI/custom_nodes
@@ -60,7 +56,6 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/Fannovel16/comfyui_controlnet_aux.git && \
     git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git && \
     git clone --depth 1 https://github.com/KBYSHanahira/Civicomfy.git
-
 
 # Install requirements supplied by each custom-node package
 # Also force CPU-only onnxruntime to prevent cuDNN 9 / CUDA 13 symbol conflicts in DWPose/ONNX
