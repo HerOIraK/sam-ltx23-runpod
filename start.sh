@@ -55,10 +55,10 @@ nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspac
 
 
 # Build & Compile SageAttention CUDA kernels for RTX 4090 on container startup
-echo "📦 Checking/Building SageAttention CUDA extension for RTX 4090..."
+echo "📦 Checking/Building SageAttention CUDA extension for RTX 3090 / 4090..."
 python3 -c "import sageattention; print('SageAttention module loaded successfully!')" 2>/dev/null || {
     echo "⚡ Compiling SageAttention CUDA extension..."
-    (cd /tmp && git clone --depth 1 https://github.com/thu-ml/SageAttention.git && cd SageAttention && TORCH_CUDA_ARCH_LIST="8.9" python3 setup.py install && rm -rf /tmp/SageAttention) || true
+    (cd /tmp && git clone --depth 1 https://github.com/thu-ml/SageAttention.git && cd SageAttention && TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0" python3 setup.py install && rm -rf /tmp/SageAttention) || true
 }
 
 cd "$COMFYUI_DIR"
