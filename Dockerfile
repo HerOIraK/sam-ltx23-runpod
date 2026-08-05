@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y \
     wget \
     aria2 \
     ffmpeg \
+    libcusparse-dev \
+    libcublas-dev \
+    libcurand-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy ComfyUI outside /workspace so it's not hidden by volume mounts
