@@ -59,8 +59,9 @@ echo "📦 Checking/Building SageAttention CUDA extension for RTX 3090 / 4090...
 python3 -c "import sageattention; print('SageAttention module loaded successfully!')" 2>/dev/null || {
     echo "⚡ Installing CUDA headers (cusparse.h)..."
     apt-get update && apt-get install -y libcusparse-dev libcublas-dev libcurand-dev || true
-    echo "⚡ Compiling SageAttention CUDA extension..."
-    (cd /tmp && git clone --depth 1 https://github.com/thu-ml/SageAttention.git && cd SageAttention && CPATH="/usr/include:$CPATH" TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0" python3 setup.py install && rm -rf /tmp/SageAttention) || true
+    echo "⚡ Compiling SageAttention CUDA extension (MAX_JOBS=2 for RAM safety)..."
+    export MAX_JOBS=2
+    (cd /tmp && git clone --depth 1 https://github.com/thu-ml/SageAttention.git && cd SageAttention && TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0" python3 setup.py install && rm -rf /tmp/SageAttention) || true
 }
 
 cd "$COMFYUI_DIR"
