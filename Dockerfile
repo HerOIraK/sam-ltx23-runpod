@@ -2,6 +2,9 @@ FROM runpod/comfyui:cuda13.0
 
 USER root
 
+ENV TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
+ENV CUDA_HOME=/usr/local/cuda
+
 RUN apt-get update && apt-get install -y \
     git \
     git-lfs \
@@ -29,8 +32,8 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
 
 
 # Install SageAttention (requires pre-installed PyTorch & --no-build-isolation)
-RUN pip install --no-cache-dir --no-build-isolation sageattention==2.2.0 || \
-    (git clone https://github.com/thu-ml/SageAttention.git /tmp/SageAttention && cd /tmp/SageAttention && pip install --no-cache-dir --no-build-isolation . && rm -rf /tmp/SageAttention)
+# Install SageAttention with explicit GPU Arch targeting
+RUN TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0" pip install --no-cache-dir sageattention==2.2.0 || true
 
 WORKDIR /opt/ComfyUI/custom_nodes
 

@@ -53,6 +53,13 @@ rm -f /workspace/root-fs || true
 ln -sf / /workspace/root-fs || true
 nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspace/code-server /workspace &
 
+
+# Ensure SageAttention is available on RTX 4090 runtime
+if ! python3 -c "import sageattention" 2>/dev/null; then
+    echo "📦 Installing SageAttention 2.2.0 on GPU runtime..."
+    pip install --no-cache-dir sageattention==2.2.0 || true
+fi
+
 cd "$COMFYUI_DIR"
 
 exec python3 main.py \
