@@ -67,6 +67,7 @@ export NVCC_APPEND_FLAGS="-I/usr/local/cuda/include"
 
 python3 -c "import sageattention._fused; print('SageAttention CUDA extension loaded successfully!')" 2>/dev/null || {
     echo "⚡ Compiling SageAttention CUDA extension..."
+    [ -f /usr/local/cuda/include/cusparse.h ] || [ -f /usr/include/cusparse.h ] || { echo "Installing cusparse CUDA headers..."; apt-get update && apt-get install -y libcusparse-dev || true; }
     pip uninstall -y sageattention || true
     rm -rf /tmp/SageAttention
     if git clone --depth 1 https://github.com/woct0rdho/SageAttention.git /tmp/SageAttention; then

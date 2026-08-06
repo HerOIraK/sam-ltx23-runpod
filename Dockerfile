@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y \
     wget \
     aria2 \
     ffmpeg \
+    libcusparse-dev || true \
+    && apt-get install -y libcusparse-dev || true \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy ComfyUI outside /workspace so it's not hidden by volume mounts
