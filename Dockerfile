@@ -2,8 +2,10 @@ FROM runpod/comfyui:cuda13.0
 
 USER root
 ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=/usr/local/cuda/bin:$PATH
 ENV CPATH=/usr/local/cuda/include:$CPATH
 ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include:$CPLUS_INCLUDE_PATH
+ENV NVIDIA_DRIVER_CAPABILITIES=all
 
 RUN apt-get update && apt-get install -y \
     git \
@@ -29,10 +31,7 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
         huggingface_hub[cli] \
         hf_transfer
 
-# Install SageAttention Python package (skipping CUDA compile on CPU Docker builder)
-ENV SAGEATTN_SKIP_CUDA_BUILD=1
-RUN pip install --no-cache-dir git+https://github.com/woct0rdho/SageAttention.git || true
-ENV SAGEATTN_SKIP_CUDA_BUILD=0
+# SageAttention CUDA kernels will be compiled JIT on container boot in start.sh when GPU is active
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
@@ -53,6 +52,7 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/TinyTerra/ComfyUI_tinyterraNodes.git && \
     git clone --depth 1 https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes.git && \
     git clone --depth 1 https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI.git && \
+    python3 -c "import os; f='Nvidia_RTX_Nodes_ComfyUI/__init__.py'; c=open(f).read().replace('sr.load()', 'try:\n            sr.load()\n        except Exception as e:\n            print(f\"[Nvidia_RTX_Nodes] Warning: RTX Video Super Resolution failed to initialize ({e}). Falling back to unscaled input.\"); return (image,)'); open(f, 'w').write(c)" && \
     git clone --depth 1 https://github.com/sipherxyz/comfyui-art-venture.git && \
     git clone --depth 1 https://github.com/plugcrypt/CRT-Nodes.git && \
     git clone --depth 1 https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes.git && \
