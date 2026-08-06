@@ -7,15 +7,19 @@ ENV CPATH=/usr/local/cuda/include:$CPATH
 ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include:$CPLUS_INCLUDE_PATH
 ENV NVIDIA_DRIVER_CAPABILITIES=all
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     git-lfs \
     curl \
     wget \
     aria2 \
     ffmpeg \
-    libcusparse-dev || true \
-    && apt-get install -y libcusparse-dev || true \
+    build-essential \
+    ninja-build \
+    libcusparse-dev \
+    libcublas-dev \
+    libcusolver-dev \
+    || (apt-get update && apt-get install -y git git-lfs curl wget aria2 ffmpeg build-essential ninja-build) \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy ComfyUI outside /workspace so it's not hidden by volume mounts

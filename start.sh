@@ -59,15 +59,26 @@ echo "📦 Checking/Building SageAttention CUDA extension for RTX 3090 / 4090...
 export CUDA_HOME="/usr/local/cuda"
 export PATH="/usr/local/cuda/bin:${PATH}"
 export MAX_JOBS=2
-export CPATH="/usr/local/cuda/include:${CPATH}"
-export CPLUS_INCLUDE_PATH="/usr/local/cuda/include:${CPLUS_INCLUDE_PATH}"
-export C_INCLUDE_PATH="/usr/local/cuda/include:${C_INCLUDE_PATH}"
-export CXX_APPEND_FLAGS="-I/usr/local/cuda/include"
-export NVCC_APPEND_FLAGS="-I/usr/local/cuda/include"
+export CPATH="/usr/local/cuda/include:/usr/include:/usr/include/x86_64-linux-gnu:${CPATH}"
+export CPLUS_INCLUDE_PATH="/usr/local/cuda/include:/usr/include:/usr/include/x86_64-linux-gnu:${CPLUS_INCLUDE_PATH}"
+export C_INCLUDE_PATH="/usr/local/cuda/include:/usr/include:/usr/include/x86_64-linux-gnu:${C_INCLUDE_PATH}"
+export CXX_APPEND_FLAGS="-I/usr/local/cuda/include -I/usr/include -I/usr/include/x86_64-linux-gnu"
+export NVCC_APPEND_FLAGS="-I/usr/local/cuda/include -I/usr/include -I/usr/include/x86_64-linux-gnu"
 
 python3 -c "import sageattention._fused; print('SageAttention CUDA extension loaded successfully!')" 2>/dev/null || {
     echo "⚡ Compiling SageAttention CUDA extension..."
-    [ -f /usr/local/cuda/include/cusparse.h ] || [ -f /usr/include/cusparse.h ] || { echo "Installing cusparse CUDA headers..."; apt-get update && apt-get install -y libcusparse-dev || true; }
+    if [ ! -f /usr/local/cuda/include/cusparse.h ] && [ ! -f /usr/include/cusparse.h ]; then
+        echo "Installing libcusparse-dev headers..."
+        apt-get update && apt-get install -y libcusparse-dev libcublas-dev libcusolver-dev || true
+    fi
+    # Ensure cusparse.h is symlinked inside /usr/local/cuda/include if installed in /usr/include
+    if [ ! -f /usr/local/cuda/include/cusparse.h ]; then
+        CUSPARSE_HEADER=$(find /usr/include /usr/lib -name cusparse.h 2>/dev/null | head -n 1)
+        if [ -n "$CUSPARSE_HEADER" ]; then
+            mkdir -p /usr/local/cuda/include
+            ln -sf "$CUSPARSE_HEADER" /usr/local/cuda/include/cusparse.h
+        fi
+    fi
     pip uninstall -y sageattention || true
     rm -rf /tmp/SageAttention
     if git clone --depth 1 https://github.com/woct0rdho/SageAttention.git /tmp/SageAttention; then
