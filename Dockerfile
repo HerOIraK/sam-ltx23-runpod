@@ -1,6 +1,9 @@
 FROM runpod/comfyui:cuda13.0
 
 USER root
+ENV CUDA_HOME=/usr/local/cuda
+ENV CPATH=/usr/local/cuda/include:$CPATH
+ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include:$CPLUS_INCLUDE_PATH
 
 RUN apt-get update && apt-get install -y \
     git \

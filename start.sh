@@ -58,8 +58,11 @@ nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspac
 echo "📦 Checking/Building SageAttention CUDA extension for RTX 3090 / 4090..."
 python3 -c "from sageattention import _fused; print('SageAttention CUDA extension loaded successfully!')" 2>/dev/null || {
     echo "⚡ Compiling SageAttention CUDA extension (MAX_JOBS=2 for RAM safety)..."
+    export CUDA_HOME="/usr/local/cuda"
     export MAX_JOBS=2
     export CPATH="/usr/local/cuda/include:${CPATH}"
+    export CPLUS_INCLUDE_PATH="/usr/local/cuda/include:${CPLUS_INCLUDE_PATH}"
+    export C_INCLUDE_PATH="/usr/local/cuda/include:${C_INCLUDE_PATH}"
     export CXX_APPEND_FLAGS="-I/usr/local/cuda/include"
     export NVCC_APPEND_FLAGS="-I/usr/local/cuda/include"
     (cd /tmp && git clone --depth 1 https://github.com/woct0rdho/SageAttention.git && cd SageAttention && python3 setup.py install && rm -rf /tmp/SageAttention) || true
