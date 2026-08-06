@@ -28,7 +28,7 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
 
 # Install SageAttention Python package (skipping CUDA compile on CPU Docker builder)
 ENV SAGEATTN_SKIP_CUDA_BUILD=1
-RUN pip install --no-cache-dir git+https://github.com/thu-ml/SageAttention.git || true
+RUN pip install --no-cache-dir git+https://github.com/woct0rdho/SageAttention.git || true
 ENV SAGEATTN_SKIP_CUDA_BUILD=0
 
 WORKDIR /opt/ComfyUI/custom_nodes

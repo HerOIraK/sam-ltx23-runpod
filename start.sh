@@ -62,7 +62,7 @@ python3 -c "from sageattention import _fused; print('SageAttention CUDA extensio
     export CPATH="/usr/local/cuda/include:${CPATH}"
     export CXX_APPEND_FLAGS="-I/usr/local/cuda/include"
     export NVCC_APPEND_FLAGS="-I/usr/local/cuda/include"
-    (cd /tmp && git clone --depth 1 https://github.com/thu-ml/SageAttention.git && cd SageAttention && python3 setup.py install && rm -rf /tmp/SageAttention) || true
+    (cd /tmp && git clone --depth 1 https://github.com/woct0rdho/SageAttention.git && cd SageAttention && python3 setup.py install && rm -rf /tmp/SageAttention) || true
 }
 
 cd "$COMFYUI_DIR"
