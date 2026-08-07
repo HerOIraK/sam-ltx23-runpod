@@ -59,7 +59,7 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/TinyTerra/ComfyUI_tinyterraNodes.git && \
     git clone --depth 1 https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes.git && \
     git clone --depth 1 https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI.git && \
-    python3 -c "f='Nvidia_RTX_Nodes_ComfyUI/__init__.py'; open(f,'a').write('\n\ntry:\n    _orig_exec = RTXVideoSuperResolution.execute\n    def _safe_exec(self, *args, **kwargs):\n        try:\n            return _orig_exec(self, *args, **kwargs)\n        except Exception as e:\n            print(f\"[Nvidia_RTX_Nodes] Warning: RTX Video Super Resolution failed ({e}). Returning input image.\")\n            return (kwargs.get(\"image\", args[0] if args else None),)\n    RTXVideoSuperResolution.execute = _safe_exec\nexcept Exception:\n    pass\n')" && \
+    python3 -c "f='Nvidia_RTX_Nodes_ComfyUI/__init__.py'; open(f,'a').write('\n\ntry:\n    _orig_exec = RTXVideoSuperResolution.execute\n    class _Wrapper:\n        @classmethod\n        def _safe_exec(cls, *args, **kwargs):\n            try:\n                return _orig_exec(*args, **kwargs)\n            except Exception as e:\n                print(f\"[Nvidia_RTX_Nodes] Warning: RTX Video Super Resolution failed ({e}). Returning input image.\")\n                return (kwargs.get(\"image\", args[0] if args else None),)\n    RTXVideoSuperResolution.execute = _Wrapper._safe_exec\nexcept Exception:\n    pass\n')" && \
     git clone --depth 1 https://github.com/sipherxyz/comfyui-art-venture.git && \
     git clone --depth 1 https://github.com/plugcrypt/CRT-Nodes.git && \
     git clone --depth 1 https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes.git && \
