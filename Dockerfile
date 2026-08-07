@@ -52,6 +52,7 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     python3 -c "f = 'ComfyUI-LTXVideo/pyramid_blending.py'; c = open(f).read().replace('    pad,\n)', ')\nfrom torch.nn.functional import pad'); open(f, 'w').write(c)" && \
     git clone --depth 1 https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git && \
     git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
+    python3 -c "f = 'ComfyUI-KJNodes/nodes/model_optimization_nodes.py'; c = open(f).read().replace('from sageattention import sageattn_qk_int8_pv_fp8_cuda', 'try:\n        from sageattention import sageattn_qk_int8_pv_fp8_cuda\n    except ImportError:\n        from sageattention import sageattn as sageattn_qk_int8_pv_fp8_cuda'); open(f, 'w').write(c)" && \
     git clone --depth 1 https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git && \
     git clone --depth 1 https://github.com/rgthree/rgthree-comfy.git && \
     git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
