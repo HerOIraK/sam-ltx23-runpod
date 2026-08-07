@@ -36,7 +36,7 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
         huggingface_hub[cli] \
         hf_transfer \
         nvidia-vfx \
-        sageattention
+        git+https://github.com/thu-ml/SageAttention.git
 
 # SageAttention CUDA kernels will be compiled JIT on container boot in start.sh when GPU is active
 

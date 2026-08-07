@@ -54,11 +54,11 @@ ln -sf / /workspace/root-fs || true
 nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspace/code-server /workspace &
 
 
-# Ensure SageAttention is available for RTX 3090 / 4090
-echo "📦 Verifying SageAttention installation..."
-python3 -c "import sageattention; print('SageAttention module loaded successfully!')" 2>/dev/null || {
-    echo "⚡ Installing SageAttention..."
-    pip install --no-cache-dir sageattention || true
+# Ensure SageAttention CUDA kernels are available for RTX 3090 / 4090
+echo "📦 Verifying SageAttention CUDA kernel installation..."
+python3 -c "from sageattention import sageattn_qk_int8_pv_fp8_cuda; print('SageAttention CUDA kernels loaded successfully!')" 2>/dev/null || {
+    echo "⚡ Installing official SageAttention from source..."
+    pip install --no-cache-dir git+https://github.com/thu-ml/SageAttention.git || true
 }
 
 cd "$COMFYUI_DIR"
