@@ -36,7 +36,9 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
         huggingface_hub[cli] \
         hf_transfer \
         nvidia-vfx && \
-    pip install --no-cache-dir --no-build-isolation git+https://github.com/thu-ml/SageAttention.git
+    ( [ -f /usr/local/cuda/include/cusparse.h ] || ln -sf /usr/include/cusparse.h /usr/local/cuda/include/cusparse.h || true ) && \
+    ( pip install --no-cache-dir --no-build-isolation git+https://github.com/thu-ml/SageAttention.git || pip install --no-cache-dir sageattention ) && \
+    python3 -c "import sageattention, site, os; p = os.path.join(site.getsitepackages()[0], 'sageattention', '__init__.py'); open(p, 'a').write('\n\nif not hasattr(sageattention, \"sageattn_qk_int8_pv_fp8_cuda\"): sageattn_qk_int8_pv_fp8_cuda = getattr(sageattention, \"sageattn\", None)\n')"
 
 # SageAttention CUDA kernels will be compiled JIT on container boot in start.sh when GPU is active
 

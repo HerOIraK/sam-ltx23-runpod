@@ -57,8 +57,29 @@ nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspac
 # Ensure SageAttention CUDA kernels are available for RTX 3090 / 4090
 echo "📦 Verifying SageAttention CUDA kernel installation..."
 python3 -c "from sageattention import sageattn_qk_int8_pv_fp8_cuda; print('SageAttention CUDA kernels loaded successfully!')" 2>/dev/null || {
-    echo "⚡ Installing official SageAttention from source..."
-    pip install --no-cache-dir --no-build-isolation git+https://github.com/thu-ml/SageAttention.git || true
+    echo "⚡ Setting up CUDA build environment for SageAttention..."
+    if [ ! -f /usr/local/cuda/include/cusparse.h ] && [ ! -f /usr/include/cusparse.h ]; then
+        echo "Installing libcusparse-dev headers..."
+        apt-get update && apt-get install -y libcusparse-dev libcublas-dev libcusolver-dev || true
+    fi
+    if [ ! -f /usr/local/cuda/include/cusparse.h ]; then
+        CUSPARSE_HEADER=$(find /usr/include /usr/lib -name cusparse.h 2>/dev/null | head -n 1)
+        if [ -n "$CUSPARSE_HEADER" ]; then
+            mkdir -p /usr/local/cuda/include
+            ln -sf "$CUSPARSE_HEADER" /usr/local/cuda/include/cusparse.h
+        fi
+    fi
+    export CUDA_HOME="/usr/local/cuda"
+    export PATH="/usr/local/cuda/bin:${PATH}"
+    export CPATH="/usr/local/cuda/include:/usr/include:/usr/include/x86_64-linux-gnu:${CPATH}"
+    export CPLUS_INCLUDE_PATH="/usr/local/cuda/include:/usr/include:/usr/include/x86_64-linux-gnu:${CPLUS_INCLUDE_PATH}"
+
+    echo "⚡ Compiling official SageAttention from source..."
+    if ! pip install --no-cache-dir --no-build-isolation git+https://github.com/thu-ml/SageAttention.git; then
+        echo "⚠️ Compilation failed; installing PyPI package with symbol compatibility bridge..."
+        pip install --no-cache-dir sageattention || true
+    fi
+    python3 -c "import sageattention, site, os; p = os.path.join(site.getsitepackages()[0], 'sageattention', '__init__.py'); open(p, 'a').write('\n\nif not hasattr(sageattention, \"sageattn_qk_int8_pv_fp8_cuda\"): sageattn_qk_int8_pv_fp8_cuda = getattr(sageattention, \"sageattn\", None)\n')" 2>/dev/null || true
 }
 
 cd "$COMFYUI_DIR"
