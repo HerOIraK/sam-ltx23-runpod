@@ -57,8 +57,6 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/Smirnov75/ComfyUI-mxToolkit.git && \
     git clone --depth 1 https://github.com/TinyTerra/ComfyUI_tinyterraNodes.git && \
     git clone --depth 1 https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes.git && \
-    git clone --depth 1 https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI.git && \
-    python3 -c "import os; f='Nvidia_RTX_Nodes_ComfyUI/__init__.py'; c=open(f).read().replace('sr.load()', 'try:\n            sr.load()\n        except Exception as e:\n            print(f\"[Nvidia_RTX_Nodes] Warning: RTX Video Super Resolution failed to initialize ({e}). Falling back to unscaled input.\"); return (image,)'); open(f, 'w').write(c)" && \
     git clone --depth 1 https://github.com/sipherxyz/comfyui-art-venture.git && \
     git clone --depth 1 https://github.com/plugcrypt/CRT-Nodes.git && \
     git clone --depth 1 https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes.git && \
