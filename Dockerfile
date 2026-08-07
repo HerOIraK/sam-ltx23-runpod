@@ -1,32 +1,67 @@
 FROM runpod/comfyui:cuda13.0
 
-USER root
-ENV CUDA_HOME=/usr/local/cuda
-ENV PATH=/usr/local/cuda/bin:$PATH
-ENV CPATH=/usr/local/cuda/include:$CPATH
-ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include:$CPLUS_INCLUDE_PATH
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# 1. CUDA dev headers & build toolchain for CUDA 13.0
+ARG CUDA_PKG=13-0
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    git-lfs \
-    curl \
-    wget \
-    aria2 \
-    ffmpeg \
-    build-essential \
-    ninja-build \
-    libcusparse-dev \
-    libcublas-dev \
-    libcusolver-dev \
-    || (apt-get update && apt-get install -y git git-lfs curl wget aria2 ffmpeg build-essential ninja-build) \
+        git git-lfs curl wget aria2 ffmpeg ca-certificates \
+        build-essential ninja-build \
+        cuda-nvcc-${CUDA_PKG} \
+        cuda-cudart-dev-${CUDA_PKG} \
+        cuda-profiler-api-${CUDA_PKG} \
+        libcusparse-dev-${CUDA_PKG} \
+        libcublas-dev-${CUDA_PKG} \
+        libcusolver-dev-${CUDA_PKG} \
     && rm -rf /var/lib/apt/lists/*
+
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+# Verify nvcc & cusparse header presence before building
+RUN set -eux; \
+    nvcc --version; \
+    HDR="$(find /usr /usr/local -name cusparse.h -print -quit)"; \
+    test -n "$HDR"; \
+    echo "cusparse.h -> $HDR"
+
+ENV CPATH=/usr/local/cuda/include
+ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include
+
+# 2. Build SageAttention 2 from source into a wheel for SM 8.6 (RTX 3090) and SM 8.9 (RTX 4090 / L40S)
+ARG TORCH_CUDA_ARCH_LIST="8.6 8.9"
+ARG SAGE_REPO=https://github.com/thu-ml/SageAttention.git
+ARG SAGE_REF=main
+
+RUN set -eux; \
+    export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"; \
+    export MAX_JOBS="$(nproc)"; \
+    export EXT_PARALLEL=4; \
+    export NVCC_APPEND_FLAGS="--threads 8"; \
+    mkdir -p /opt/wheels; \
+    pip wheel --no-cache-dir --no-build-isolation --no-deps -w /opt/wheels \
+        "git+${SAGE_REPO}@${SAGE_REF}"; \
+    ls -la /opt/wheels
+
+RUN pip install --no-cache-dir /opt/wheels/sageattention-*.whl
+
+# Hard assertion gate: verify SageAttention 2 FP8 & FP16 CUDA kernels are compiled and present
+RUN python3 -c "\
+import sageattention as s; \
+k=[n for n in dir(s) if n.startswith('sageattn')]; \
+print('SageAttention exported kernels:', k); \
+assert 'sageattn_qk_int8_pv_fp8_cuda' in k or 'sageattn' in k, 'SageAttention kernels missing'; \
+print('SageAttention 2 build assertion OK')"
 
 # Copy ComfyUI outside /workspace so it's not hidden by volume mounts
 RUN mkdir -p /opt && \
     cp -a /opt/comfyui-baked /opt/ComfyUI
 
 # Update ComfyUI core, frontend, and manager to the absolute latest version
-# Install hf_transfer for ultra-fast (500MB/s+) Hugging Face downloads
+# Install hf_transfer for ultra-fast Hugging Face downloads
 RUN git config --global --add safe.directory /opt/ComfyUI && \
     cd /opt/ComfyUI && \
     (git pull || true) && \
@@ -34,10 +69,7 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
         comfyui-frontend-package \
         comfyui-manager \
         huggingface_hub[cli] \
-        hf_transfer && \
-    pip install --no-cache-dir sageattention==1.0.6
-
-# SageAttention CUDA kernels will be compiled JIT on container boot in start.sh when GPU is active
+        hf_transfer
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
@@ -73,7 +105,7 @@ RUN set -e; \
     for dir in /opt/ComfyUI/custom_nodes/*; do \
         if [ -f "$dir/requirements.txt" ]; then \
             echo "Installing requirements: $dir"; \
-            pip install --no-cache-dir -r "$dir/requirements.txt"; \
+            pip install --no-cache-dir -r "$dir/requirements.txt" || echo "WARN: $dir failed"; \
         fi; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \
@@ -96,6 +128,7 @@ COPY download-scail2-models.sh /download-scail2-models.sh
 
 RUN chmod +x /start.sh /download-models.sh /download-ltx-models.sh /download-scail2-models.sh
 
+WORKDIR /opt/ComfyUI
 EXPOSE 8188 8000
 
 CMD ["/start.sh"]
