@@ -34,7 +34,7 @@ RUN git config --global --add safe.directory /opt/ComfyUI && \
         comfyui-frontend-package \
         comfyui-manager \
         huggingface_hub[cli] \
-        hf_transfer \
+        hf_transfer && \
     pip install --no-cache-dir sageattention==1.0.6
 
 # SageAttention CUDA kernels will be compiled JIT on container boot in start.sh when GPU is active
