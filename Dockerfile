@@ -5,7 +5,6 @@ ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=/usr/local/cuda/bin:$PATH
 ENV CPATH=/usr/local/cuda/include:$CPATH
 ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include:$CPLUS_INCLUDE_PATH
-ENV NVIDIA_DRIVER_CAPABILITIES=all
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
