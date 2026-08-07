@@ -54,33 +54,57 @@ ln -sf / /workspace/root-fs || true
 nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspace/code-server /workspace &
 
 
-# Ensure SageAttention CUDA kernels are available for RTX 3090 / 4090
-echo "📦 Verifying SageAttention CUDA kernel installation..."
-python3 -c "from sageattention import sageattn_qk_int8_pv_fp8_cuda; print('SageAttention CUDA kernels loaded successfully!')" 2>/dev/null || {
-    echo "⚡ Setting up CUDA build environment for SageAttention..."
-    if [ ! -f /usr/local/cuda/include/cusparse.h ] && [ ! -f /usr/include/cusparse.h ]; then
-        echo "Installing libcusparse-dev headers..."
-        apt-get update && apt-get install -y libcusparse-dev libcublas-dev libcusolver-dev || true
-    fi
-    if [ ! -f /usr/local/cuda/include/cusparse.h ]; then
-        CUSPARSE_HEADER=$(find /usr/include /usr/lib -name cusparse.h 2>/dev/null | head -n 1)
-        if [ -n "$CUSPARSE_HEADER" ]; then
-            mkdir -p /usr/local/cuda/include
-            ln -sf "$CUSPARSE_HEADER" /usr/local/cuda/include/cusparse.h
-        fi
-    fi
-    export CUDA_HOME="/usr/local/cuda"
-    export PATH="/usr/local/cuda/bin:${PATH}"
-    export CPATH="/usr/local/cuda/include:/usr/include:/usr/include/x86_64-linux-gnu:${CPATH}"
-    export CPLUS_INCLUDE_PATH="/usr/local/cuda/include:/usr/include:/usr/include/x86_64-linux-gnu:${CPLUS_INCLUDE_PATH}"
+# Ensure SageAttention and GPU capability routing for RTX 3090 / 4090
+set +e
+echo "Detecting GPU capability..."
+GPU_CC=$(python3 -c "import torch; print('%d%d' % torch.cuda.get_device_capability(0)) if torch.cuda.is_available() else print('none')" 2>/dev/null)
+echo "   Compute capability: ${GPU_CC}"
 
-    echo "⚡ Compiling official SageAttention from source..."
-    if ! pip install --no-cache-dir --no-build-isolation git+https://github.com/thu-ml/SageAttention.git; then
-        echo "⚠️ Compilation failed; installing PyPI package with symbol compatibility bridge..."
-        pip install --no-cache-dir sageattention || true
-    fi
-    python3 -c "import sageattention, site, os; p = os.path.join(site.getsitepackages()[0], 'sageattention', '__init__.py'); open(p, 'a').write('\n\nif not hasattr(sageattention, \"sageattn_qk_int8_pv_fp8_cuda\"): sageattn_qk_int8_pv_fp8_cuda = getattr(sageattention, \"sageattn\", None)\n')" 2>/dev/null || true
-}
+# GPUs below SM 8.9 (e.g. RTX 3090 = SM 8.6) do not have FP8 tensor cores.
+# Auto-rewrite any hardcoded FP8 kernel selections in saved workflows to 'auto'.
+if [ "$GPU_CC" != "89" ] && [ "$GPU_CC" != "90" ] && [ "$GPU_CC" != "120" ]; then
+    echo "   SM ${GPU_CC}: No FP8 hardware tensor cores -> Normalizing PatchSageAttentionKJ workflow settings to 'auto'..."
+    WFDIR="$VOLUME_DIR/user/default/workflows" python3 - <<'PY'
+import json, os, pathlib
+BAD = {"sageattn_qk_int8_pv_fp8_cuda", "sageattn_qk_int8_pv_fp8_cuda++",
+       "sageattn_qk_int8_pv_fp8_cuda_sm90", "sageattn_3_blackwell"}
+def scrub(n):
+    c = 0
+    if isinstance(n, dict):
+        for k, v in n.items():
+            if isinstance(v, str) and v in BAD: n[k] = "auto"; c += 1
+            else: c += scrub(v)
+    elif isinstance(n, list):
+        for i, v in enumerate(n):
+            if isinstance(v, str) and v in BAD: n[i] = "auto"; c += 1
+            else: c += scrub(v)
+    return c
+d = pathlib.Path(os.environ["WFDIR"])
+if d.is_dir():
+    for f in d.rglob("*.json"):
+        try: data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception: continue
+        if scrub(data):
+            f.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            print(f"      Scrubbed FP8 kernel in {f.name} -> auto")
+PY
+fi
+
+echo "Verifying SageAttention installation..."
+if ! python3 -c "from sageattention import sageattn" 2>/dev/null; then
+    echo "   Installing SageAttention (Triton, SM80/SM86 safe)..."
+    pip install --no-cache-dir sageattention==1.0.6 || pip install --no-cache-dir sageattention || true
+fi
+
+python3 - <<'PY' || true
+try:
+    import sageattention
+    ks = sorted(n for n in dir(sageattention) if n.startswith("sageattn"))
+    print("   SageAttention kernels available: " + (", ".join(ks) if ks else "none"))
+except Exception as e:
+    print(f"   SageAttention unavailable ({e}) - ComfyUI will use PyTorch attention")
+PY
+set -e
 
 cd "$COMFYUI_DIR"
 
