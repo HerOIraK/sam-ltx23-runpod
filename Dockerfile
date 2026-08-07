@@ -1,14 +1,17 @@
-FROM runpod/comfyui:cuda13.0
+ARG BASE=runpod/comfyui:cuda13.0
+
+# ===========================================================================
+# STAGE 1 - Builder Stage: Compile SageAttention wheel and discard toolchain
+# ===========================================================================
+FROM ${BASE} AS sagebuilder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# 1. CUDA dev headers & build toolchain for CUDA 13.0
 ARG CUDA_PKG=13-0
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git git-lfs curl wget aria2 ffmpeg ca-certificates \
-        build-essential ninja-build \
+        git git-lfs ca-certificates build-essential ninja-build \
         cuda-nvcc-${CUDA_PKG} \
         cuda-cudart-dev-${CUDA_PKG} \
         cuda-profiler-api-${CUDA_PKG} \
@@ -20,48 +23,62 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=${CUDA_HOME}/bin:${PATH}
 ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV CPATH=/usr/local/cuda/include
+ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include
 
-# Verify nvcc & cusparse header presence before building
 RUN set -eux; \
     nvcc --version; \
     HDR="$(find /usr /usr/local -name cusparse.h -print -quit)"; \
     test -n "$HDR"; \
     echo "cusparse.h -> $HDR"
 
-ENV CPATH=/usr/local/cuda/include
-ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include
-
-# 2. Build SageAttention 2 from source into a wheel for SM 8.6 (RTX 3090) and SM 8.9 (RTX 4090 / L40S)
 ARG TORCH_CUDA_ARCH_LIST="8.6 8.9"
+ARG MAX_JOBS=4
+ARG EXT_PARALLEL=1
+ARG NVCC_THREADS=2
 ARG SAGE_REPO=https://github.com/thu-ml/SageAttention.git
 ARG SAGE_REF=main
 
 RUN set -eux; \
     export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"; \
-    export MAX_JOBS="$(nproc)"; \
-    export EXT_PARALLEL=4; \
-    export NVCC_APPEND_FLAGS="--threads 8"; \
+    export MAX_JOBS="${MAX_JOBS}"; \
+    export EXT_PARALLEL="${EXT_PARALLEL}"; \
+    export NVCC_APPEND_FLAGS="--threads ${NVCC_THREADS}"; \
+    echo "Building SageAttention wheel: arch=${TORCH_CUDA_ARCH_LIST} jobs=${MAX_JOBS}"; \
     mkdir -p /opt/wheels; \
     pip wheel --no-cache-dir --no-build-isolation --no-deps -w /opt/wheels \
         "git+${SAGE_REPO}@${SAGE_REF}"; \
-    ls -la /opt/wheels
+    ls -la /opt/wheels; \
+    test -n "$(ls /opt/wheels/sageattention-*.whl 2>/dev/null)"
 
+# ===========================================================================
+# STAGE 2 - Runtime Stage: Clean image with prebuilt SageAttention wheel
+# ===========================================================================
+FROM ${BASE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git git-lfs curl wget aria2 ffmpeg ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=sagebuilder /opt/wheels /opt/wheels
 RUN pip install --no-cache-dir /opt/wheels/sageattention-*.whl
 
-# Hard assertion gate: verify SageAttention 2 FP8 & FP16 CUDA kernels are compiled and present
+# Hard assertion gate: verify SageAttention 2 kernels are present
 RUN python3 -c "\
 import sageattention as s; \
 k=[n for n in dir(s) if n.startswith('sageattn')]; \
-print('SageAttention exported kernels:', k); \
+print('Exports:', k); \
 assert 'sageattn_qk_int8_pv_fp8_cuda' in k or 'sageattn' in k, 'SageAttention kernels missing'; \
-print('SageAttention 2 build assertion OK')"
+print('SageAttention 2 Runtime Assertion OK')"
 
-# Copy ComfyUI outside /workspace so it's not hidden by volume mounts
-RUN mkdir -p /opt && \
-    cp -a /opt/comfyui-baked /opt/ComfyUI
+# Copy baked ComfyUI to /opt/ComfyUI
+RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Update ComfyUI core, frontend, and manager to the absolute latest version
-# Install hf_transfer for ultra-fast Hugging Face downloads
+# Update ComfyUI core, frontend, manager & hf_transfer
 RUN git config --global --add safe.directory /opt/ComfyUI && \
     cd /opt/ComfyUI && \
     (git pull || true) && \
@@ -99,8 +116,7 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git && \
     git clone --depth 1 https://github.com/KBYSHanahira/Civicomfy.git
 
-# Install requirements supplied by each custom-node package
-# Also force CPU-only onnxruntime to prevent cuDNN 9 / CUDA 13 symbol conflicts in DWPose/ONNX
+# Install custom node requirements & force CPU-only onnxruntime
 RUN set -e; \
     for dir in /opt/ComfyUI/custom_nodes/*; do \
         if [ -f "$dir/requirements.txt" ]; then \
@@ -109,9 +125,17 @@ RUN set -e; \
         fi; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \
-    pip install --no-cache-dir onnxruntime
+    pip install --no-cache-dir onnxruntime; \
+    rm -rf /root/.cache/pip
 
-# Add default workflows and settings to the image
+# Verify custom node requirements did not downgrade PyTorch or break SageAttention
+RUN python3 -c "\
+import torch; \
+print('torch', torch.__version__, 'cuda', torch.version.cuda); \
+assert torch.version.cuda and torch.version.cuda.startswith('13'), 'torch/cuda version mismatch'; \
+import sageattention; print('SageAttention verification OK')"
+
+# Copy workflows & settings
 RUN mkdir -p /opt/ComfyUI/user/default/workflows /opt/ComfyUI/user/__manager
 COPY workflows/ /opt/ComfyUI/user/default/workflows/
 COPY config/comfy.settings.json /opt/ComfyUI/user/default/comfy.settings.json
@@ -120,7 +144,7 @@ COPY config/config.ini /opt/ComfyUI/user/__manager/config.ini
 # Install code-server
 RUN curl -fsSL https://code-server.dev/install.sh | sh
 
-# Add startup and provisioning scripts
+# Copy entrypoint scripts
 COPY start.sh /start.sh
 COPY download-models.sh /download-models.sh
 COPY download-ltx-models.sh /download-ltx-models.sh

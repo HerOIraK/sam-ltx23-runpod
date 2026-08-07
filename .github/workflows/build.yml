@@ -1,0 +1,64 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "start.sh"
+      - "download-models.sh"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Disk before
+        run: df -h /
+
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          provenance: false
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui:1.0.0
+            ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui:${{ github.sha }}
+          build-args: |
+            TORCH_CUDA_ARCH_LIST=8.6 8.9
+            MAX_JOBS=4
+            EXT_PARALLEL=1
+            NVCC_THREADS=2
+
+      - name: Disk after
+        if: always()
+        run: df -h /
