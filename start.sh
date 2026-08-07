@@ -58,7 +58,7 @@ nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspac
 echo "📦 Verifying SageAttention CUDA kernel installation..."
 python3 -c "from sageattention import sageattn_qk_int8_pv_fp8_cuda; print('SageAttention CUDA kernels loaded successfully!')" 2>/dev/null || {
     echo "⚡ Installing official SageAttention from source..."
-    pip install --no-cache-dir git+https://github.com/thu-ml/SageAttention.git || true
+    pip install --no-cache-dir --no-build-isolation git+https://github.com/thu-ml/SageAttention.git || true
 }
 
 cd "$COMFYUI_DIR"
