@@ -76,13 +76,15 @@ cp -n "$COMFYUI_DIR/user/__manager/config.ini" "$VOLUME_DIR/user/__manager/confi
 rm -rf "$COMFYUI_DIR/user"
 ln -s "$VOLUME_DIR/user" "$COMFYUI_DIR/user"
 
-# 4. Optional Model Downloads
+# 4. Model Downloads (Disabled by default)
 if [ "${AUTO_DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_LTX_MODELS:-false}" = "true" ]; then
+    echo "[models] AUTO_DOWNLOAD_LTX_MODELS=true -> Running LTX model downloader..."
     /download-ltx-models.sh
-fi
-
-if [ "${AUTO_DOWNLOAD_SCAIL2_MODELS:-false}" = "true" ]; then
+elif [ "${AUTO_DOWNLOAD_SCAIL2_MODELS:-false}" = "true" ]; then
+    echo "[models] AUTO_DOWNLOAD_SCAIL2_MODELS=true -> Running SCAIL2 model downloader..."
     /download-scail2-models.sh
+else
+    echo "[models] Auto model downloads are DISABLED (default). No models downloaded on boot."
 fi
 
 # 5. Start VS Code code-server on port 8000 in background
