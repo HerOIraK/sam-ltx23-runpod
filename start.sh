@@ -8,7 +8,9 @@ echo "=============================================================="
 echo " MiniMax H3 + LTX-2.3 ComfyUI  |  $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "=============================================================="
 
-# 1. Boot Environment Diagnostics
+# 1. Warm up NVIDIA CUDA Driver & Boot Environment Diagnostics
+nvidia-smi >/dev/null 2>&1 || true
+
 python3 - <<'PYCHK'
 import sys
 print("Python          :", sys.version.split()[0])
