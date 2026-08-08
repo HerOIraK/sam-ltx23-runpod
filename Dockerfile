@@ -116,7 +116,11 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes.git && \
     git clone --depth 1 https://github.com/Fannovel16/comfyui_controlnet_aux.git && \
     git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git && \
-    git clone --depth 1 https://github.com/KBYSHanahira/Civicomfy.git
+    git clone --depth 1 https://github.com/KBYSHanahira/Civicomfy.git && \
+    git clone --depth 1 https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git && \
+    git clone --depth 1 https://github.com/xmarre/ComfyUI-Spectrum-Proper.git && \
+    git clone --depth 1 https://github.com/ruwwww/comfyui-spectrum-sdxl.git && \
+    git clone --depth 1 https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler.git
 
 # Install custom node requirements & force CPU-only onnxruntime
 RUN set -e; \
