@@ -117,7 +117,8 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/Fannovel16/comfyui_controlnet_aux.git && \
     git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git && \
     git clone --depth 1 https://github.com/KBYSHanahira/Civicomfy.git && \
-    git clone --depth 1 https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git && \
+    git clone https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git && \
+    (cd ComfyUI-Spectrum-MiniMax-H3 && git checkout b5fd9db33267623eb3469ee7d6d4ddf397240025 || true) && \
     git clone --depth 1 https://github.com/xmarre/ComfyUI-Spectrum-Proper.git && \
     git clone --depth 1 https://github.com/ruwwww/comfyui-spectrum-sdxl.git && \
     git clone --depth 1 https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler.git
@@ -161,11 +162,7 @@ WORKDIR /opt/ComfyUI/custom_nodes
 RUN set -eux; \
     git clone --depth 1 https://github.com/willmiao/ComfyUI-Lora-Manager.git || true; \
     git clone --depth 1 https://github.com/Steudio/ComfyUI_Steudio.git || true; \
-    git clone --depth 1 https://github.com/pixaroma/ComfyUI-Pixaroma.git || true; \
-    if [ -d "ComfyUI-Spectrum-MiniMax-H3" ]; then \
-        git -C ComfyUI-Spectrum-MiniMax-H3 fetch --all && \
-        git -C ComfyUI-Spectrum-MiniMax-H3 checkout b5fd9db33267623eb3469ee7d6d4ddf397240025; \
-    fi
+    git clone --depth 1 https://github.com/pixaroma/ComfyUI-Pixaroma.git || true
 
 WORKDIR /opt/ComfyUI
 EXPOSE 8188 8000
