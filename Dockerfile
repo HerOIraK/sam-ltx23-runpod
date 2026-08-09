@@ -156,7 +156,16 @@ COPY download-models.sh /download-models.sh
 COPY download-ltx-models.sh /download-ltx-models.sh
 COPY download-scail2-models.sh /download-scail2-models.sh
 
-RUN chmod +x /start.sh /download-models.sh /download-ltx-models.sh /download-scail2-models.sh
+# --- Phase 2 Patch: Add missing required custom nodes & pin Spectrum commit ---
+WORKDIR /opt/ComfyUI/custom_nodes
+RUN set -eux; \
+    git clone --depth 1 https://github.com/willmiao/ComfyUI-Lora-Manager.git || true; \
+    git clone --depth 1 https://github.com/Steudio/ComfyUI_Steudio.git || true; \
+    git clone --depth 1 https://github.com/pixaroma/ComfyUI-Pixaroma.git || true; \
+    if [ -d "ComfyUI-Spectrum-MiniMax-H3" ]; then \
+        git -C ComfyUI-Spectrum-MiniMax-H3 fetch --all && \
+        git -C ComfyUI-Spectrum-MiniMax-H3 checkout b5fd9db33267623eb3469ee7d6d4ddf397240025; \
+    fi
 
 WORKDIR /opt/ComfyUI
 EXPOSE 8188 8000

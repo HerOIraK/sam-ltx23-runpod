@@ -93,13 +93,20 @@ ln -sf / /workspace/root-fs || true
 nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspace/code-server /workspace >/workspace/code-server.log 2>&1 &
 
 # 5. Build ComfyUI launch command with stability flags for MiniMax H3 / int8 convrot
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+
 ARGS=(main.py --listen 0.0.0.0 --port 8188 --enable-cors-header)
 
-[ "${ENABLE_MANAGER:-true}"        = "true" ] && ARGS+=(--enable-manager)
-[ "${DISABLE_DYNAMIC_VRAM:-true}"  = "true" ] && ARGS+=(--disable-dynamic-vram)
-[ "${DISABLE_ASYNC_OFFLOAD:-true}" = "true" ] && ARGS+=(--disable-async-offload)
+[ "${ENABLE_MANAGER:-true}"        = "true" ]  && ARGS+=(--enable-manager)
+[ "${DISABLE_DYNAMIC_VRAM:-true}"  = "true" ]  && ARGS+=(--disable-dynamic-vram)
+[ "${DISABLE_ASYNC_OFFLOAD:-true}" = "true" ]  && ARGS+=(--disable-async-offload)
+[ "${DISABLE_SMART_MEMORY:-true}"  = "true" ]  && ARGS+=(--disable-smart-memory)
 [ "${DISABLE_PINNED_MEMORY:-false}" = "true" ] && ARGS+=(--disable-pinned-memory)
-[ -n "${RESERVE_VRAM:-}" ] && ARGS+=(--reserve-vram "${RESERVE_VRAM}")
+
+RESERVE_VAL="${RESERVE_VRAM:-6}"
+if [ "$RESERVE_VAL" != "false" ] && [ -n "$RESERVE_VAL" ]; then
+  ARGS+=(--reserve-vram "$RESERVE_VAL")
+fi
 
 if [ -n "${COMFY_EXTRA_ARGS:-}" ]; then
   # shellcheck disable=SC2206
