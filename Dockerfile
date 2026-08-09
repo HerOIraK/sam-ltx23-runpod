@@ -92,27 +92,37 @@ PY
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Patch 4a: Pin ComfyUI core version
-ARG COMFYUI_REF=v0.31.0
-RUN git config --global --add safe.directory /opt/ComfyUI \
-    && cd /opt/ComfyUI \
-    && git fetch --tags --depth 1 origin "${COMFYUI_REF}" \
-    && git checkout "${COMFYUI_REF}" \
-    && pip install --no-cache-dir --upgrade comfyui-frontend-package comfyui-manager huggingface_hub[cli] hf_transfer
+# Patch 4a (v2): verify the baked ComfyUI meets floor via pin-comfyui.sh
+ARG COMFYUI_MIN_VERSION=0.31.0
+ARG COMFYUI_REF=
+
+COPY filter-req.py /usr/local/bin/filter-req.py
+COPY pin-comfyui.sh /usr/local/bin/pin-comfyui.sh
+RUN chmod +x /usr/local/bin/filter-req.py /usr/local/bin/pin-comfyui.sh
+
+RUN COMFYUI_MIN_VERSION="${COMFYUI_MIN_VERSION}" \
+    COMFYUI_REF="${COMFYUI_REF}" \
+    /usr/local/bin/pin-comfyui.sh
+
+# Upgrade huggingface_hub without touching pinned frontend/manager packages
+RUN pip install --no-cache-dir --upgrade "huggingface_hub[cli]" hf_transfer
+
+# Install ComfyUI-Manager dependencies directly from tree if present (Section 3)
+RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
+    && python3 /usr/local/bin/filter-req.py manager_requirements.txt /tmp/mgr.txt \
+    && pip install --no-cache-dir -r /tmp/mgr.txt || true
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
 RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma
 
-# Clone required custom node packs (Patch 5: Pinned Spectrum, deleted conflicting ports)
+# Clone required custom node packs (Section 3: Pip Manager only, ComfyUI-Manager removed from custom_nodes)
 RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
-    python3 -c "f = 'ComfyUI-LTXVideo/pyramid_blending.py'; c = open(f).read().replace('    pad,\n)', ')\nfrom torch.nn.functional import pad'); open(f, 'w').write(c)" && \
     git clone --depth 1 https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git && \
     git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
     git clone --depth 1 https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git && \
     git clone --depth 1 https://github.com/rgthree/rgthree-comfy.git && \
     git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
-    git clone --depth 1 https://github.com/Comfy-Org/ComfyUI-Manager.git && \
     git clone --depth 1 https://github.com/yolain/ComfyUI-Easy-Use.git && \
     git clone --depth 1 https://github.com/Smirnov75/ComfyUI-mxToolkit.git && \
     git clone --depth 1 https://github.com/TinyTerra/ComfyUI_tinyterraNodes.git && \
@@ -130,7 +140,25 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/Steudio/ComfyUI_Steudio.git && \
     git clone --depth 1 https://github.com/pixaroma/ComfyUI-Pixaroma.git
 
-# Patch 2: Filter core pinned dependencies from custom node requirements & assert torch version unchanged
+# Section 4: Robust LTXVideo import patch
+RUN python3 - <<'PY'
+import pathlib, sys
+p = pathlib.Path("/opt/ComfyUI/custom_nodes/ComfyUI-LTXVideo/pyramid_blending.py")
+if not p.exists():
+    sys.exit(f"FATAL: {p} not found -- did the clone succeed?")
+src = p.read_text()
+old = "    pad,\n)"
+new = ")\nfrom torch.nn.functional import pad"
+if new in src:
+    print("LTXVideo import patch already applied upstream; skipping.")
+elif old in src:
+    p.write_text(src.replace(old, new, 1))
+    print("LTXVideo import patch applied.")
+else:
+    sys.exit("FATAL: LTXVideo import patch pattern no longer matches upstream pyramid_blending.py")
+PY
+
+# Section 5: Filter core pinned dependencies from custom node requirements using filter-req.py
 RUN set -eux; \
     TORCH_BEFORE="$(python3 -c 'import torch; print(torch.__version__)')"; \
     echo "torch before custom-node deps: ${TORCH_BEFORE}"; \
@@ -138,11 +166,7 @@ RUN set -eux; \
         req="$dir/requirements.txt"; \
         [ -f "$req" ] || continue; \
         echo "--- $(basename "$dir") ---"; \
-        grep -Ev '^[[:space:]]*(torch|torchvision|torchaudio|triton|xformers|numpy|opencv-python|opencv-contrib-python|opencv-python-headless|transformers|tokenizers|accelerate)([[:space:]]*[<>=!~].*)?$' "$req" > /tmp/req.filtered || true; \
-        if ! diff -q "$req" /tmp/req.filtered >/dev/null 2>&1; then \
-            echo "NOTE: filtered pinned core deps out of $(basename "$dir")/requirements.txt:"; \
-            diff "$req" /tmp/req.filtered || true; \
-        fi; \
+        python3 /usr/local/bin/filter-req.py "$req" /tmp/req.filtered; \
         pip install --no-cache-dir -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \
@@ -184,8 +208,9 @@ if missing:
 print("Final SageAttention verification PASSED")
 PY
 
-# Patch 4b: Record build manifest
+# Patch 4b & Section 7a: Record build manifest with safe.directory '*'
 RUN set -eux; \
+    git config --global --add safe.directory '*'; \
     { \
       echo "# Build manifest"; \
       echo "built_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"; \

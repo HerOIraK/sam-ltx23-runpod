@@ -50,8 +50,8 @@ try:
         if SM >= 89:
             print("FP8 Tensor Cores: SUPPORTED - sageattn_qk_int8_pv_fp8_cuda++ will run natively")
         else:
-            print("FP8 Tensor Cores: NOT PRESENT ON SM<89 (RTX 3090 / Ampere)")
-            print("                  Note: On RTX 3090, set 'Patch Sage Attention KJ' -> 'auto'")
+            print("FP8 Tensor Cores: not present on sm_%d%d" % cap)
+            print("                  Set 'Patch Sage Attention KJ' -> sageattn_qk_int8_pv_fp16_cuda")
     else:
         print("GPU Device      : NONE VISIBLE")
         SM = 0
@@ -124,12 +124,23 @@ else
     echo "[models] DOWNLOAD_MODELS=false (default). No models fetched automatically on boot."
 fi
 
-# 4. Start VS Code code-server on port 8000 in background
-echo "Starting code-server on port 8000..."
-mkdir -p /workspace/code-server
-rm -f /workspace/root-fs || true
-ln -sf / /workspace/root-fs || true
-nohup code-server --bind-addr 0.0.0.0:8000 --auth none --user-data-dir /workspace/code-server /workspace >/workspace/code-server.log 2>&1 &
+# 4. Security hardened VS Code code-server startup (Section 6a & 6b)
+if [ "${ENABLE_CODE_SERVER:-true}" = "true" ]; then
+    if [ -z "${CODE_SERVER_PASSWORD:-}" ]; then
+        echo "WARNING: CODE_SERVER_PASSWORD is not set. Not starting code-server."
+        echo "         Set CODE_SERVER_PASSWORD as a RunPod template env var to enable code-server."
+    else
+        echo "Starting code-server on port 8000 (password auth enabled)..."
+        mkdir -p /workspace/code-server
+        PASSWORD="${CODE_SERVER_PASSWORD}" nohup code-server \
+            --bind-addr 0.0.0.0:8000 \
+            --auth password \
+            --disable-telemetry \
+            --user-data-dir /workspace/code-server \
+            /workspace \
+            >/workspace/code-server.log 2>&1 &
+    fi
+fi
 
 # 5. Build ComfyUI launch command with stability flags for MiniMax H3 / int8 convrot
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
