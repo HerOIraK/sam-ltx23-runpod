@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcusparse-dev-${CUDA_PKG} \
         libcublas-dev-${CUDA_PKG} \
         libcusolver-dev-${CUDA_PKG} \
+        cuda-cuobjdump-${CUDA_PKG} \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CUDA_HOME=/usr/local/cuda
@@ -36,32 +37,114 @@ RUN set -eux; \
            echo "other copies found:"; find /usr -name cusparse.h 2>/dev/null; exit 1; }; \
     echo "cusparse.h present in ${CUDA_HOME}/include"
 
-ARG TORCH_CUDA_ARCH_LIST="8.6 8.9"
-ARG MAX_JOBS=4
-ARG EXT_PARALLEL=1
+# MUST be ';' separated. See the normaliser + preflight below for why.
+ARG TORCH_CUDA_ARCH_LIST="8.6;8.9"
+ARG MAX_JOBS=2
+ARG EXT_PARALLEL=2
 ARG NVCC_THREADS=2
 ARG SAGE_REPO=https://github.com/thu-ml/SageAttention.git
 ARG SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
 
-# Stage 1 arch sanitiser (space-delimited for SageAttention setup.py) + _get_cuda_arch_flags probe
+# ---------------------------------------------------------------------------
+# Stage 1 arch normaliser  ->  ';' separated
+#
+# SageAttention's setup.py parses the arch list with
+#     arch_list_env.replace(",", ";").split(";")
+# It NEVER splits on whitespace. The old sanitiser did `tr ';,' '  '`, so
+# "8.6;8.9" became the single token "8.6 8.9", which matched
+# capability.startswith("8.6") -> HAS_SM86=True, HAS_SM89=False.
+# Result: only -gencode compute_86, no _qattn_sm89 extension, and a 4090 that
+# dies with "no kernel image is available for execution on the device".
+#
+# The old torch _get_cuda_arch_flags() probe hid this, because torch DOES
+# split on whitespace -- it validated an arch list SageAttention rejects.
+# ---------------------------------------------------------------------------
 RUN set -eux; \
     ARCH="$(printf '%s' "${TORCH_CUDA_ARCH_LIST}" \
             | tr -d '\042\047' \
-            | tr ';,' '  ' \
-            | sed -e 's/  */ /g' -e 's/^ //' -e 's/ $//')"; \
+            | tr ' ,' ';;' \
+            | sed -e 's/;;*/;/g' -e 's/^;//' -e 's/;$//')"; \
     test -n "$ARCH" || { echo "FATAL: TORCH_CUDA_ARCH_LIST is empty"; exit 1; }; \
-    echo "normalised TORCH_CUDA_ARCH_LIST = [$ARCH]"; \
-    export TORCH_CUDA_ARCH_LIST="$ARCH"; \
-    python3 -c "import sys; from torch.utils.cpp_extension import _get_cuda_arch_flags as g; f=g(); print('nvcc arch flags:', f); sys.exit(0 if all(any(w in x for x in f) for w in ('compute_86','compute_89')) else 'FATAL: arch flags missing compute_86 and/or compute_89')"; \
+    printf '%s' "$ARCH" > /etc/sage-arch; \
+    echo "normalised TORCH_CUDA_ARCH_LIST = [$ARCH]"
+
+# Preflight with SageAttention's OWN parser. Refuses to start a 40 minute
+# compile unless both _qattn_sm80 (3090/sm_86) and _qattn_sm89 (4090) result.
+RUN python3 - <<'PY'
+import pathlib, sys
+
+env = pathlib.Path("/etc/sage-arch").read_text().strip()
+SUPPORTED = {"8.0", "8.6", "8.9", "9.0", "10.0", "12.0", "12.1"}
+
+caps = set()
+for item in env.replace(",", ";").split(";"):          # setup.py, verbatim
+    it = item.strip().lower().replace("sm_", "").replace("compute_", "").replace("a", "")
+    if not it:
+        continue
+    if it.endswith("+ptx"):
+        caps.add(it[:-4] + "+PTX")
+    else:
+        caps.add(f"{it[0]}.{it[1]}" if len(it) == 2 and it.isdigit() else it)
+
+print("TORCH_CUDA_ARCH_LIST:", repr(env))
+print("parsed capabilities :", sorted(caps))
+
+bad = [c for c in caps if c.replace("+PTX", "") not in SUPPORTED]
+if bad:
+    sys.exit(f"FATAL: unparseable capability {bad}. Separator must be ';', e.g. '8.6;8.9'.")
+
+has = {a: any(c.startswith(a) for c in caps) for a in ("8.0", "8.6", "8.9", "9.0")}
+print("HAS_SMxx            :", has)
+
+sm80 = any(has.values())            # one extension serves sm_80 and sm_86
+sm89 = has["8.9"] or has["9.0"]     # FP8 path
+print("will build          :",
+      [n for n, on in (("_qattn_sm80", sm80), ("_qattn_sm89", sm89), ("_fused", True)) if on])
+
+if not sm80:
+    sys.exit("FATAL: _qattn_sm80 would not be built -> RTX 3090 unsupported")
+if not sm89:
+    sys.exit(f"FATAL: _qattn_sm89 would not be built -> RTX 4090 FP8 unsupported "
+             f"(arch list {env!r} never yielded 8.9)")
+print("arch preflight PASSED")
+PY
+
+RUN set -eux; \
+    export TORCH_CUDA_ARCH_LIST="$(cat /etc/sage-arch)"; \
     export MAX_JOBS="${MAX_JOBS}"; \
     export EXT_PARALLEL="${EXT_PARALLEL}"; \
     export NVCC_APPEND_FLAGS="--threads ${NVCC_THREADS}"; \
-    echo "Building SageAttention: arch=${TORCH_CUDA_ARCH_LIST} jobs=${MAX_JOBS} ref=${SAGE_REF}"; \
+    echo "Building SageAttention: arch=${TORCH_CUDA_ARCH_LIST} ext_parallel=${EXT_PARALLEL} ref=${SAGE_REF}"; \
     mkdir -p /opt/wheels; \
     pip wheel --no-cache-dir --no-build-isolation --no-deps -w /opt/wheels \
         "git+${SAGE_REPO}@${SAGE_REF}"; \
     ls -la /opt/wheels; \
     test -n "$(ls /opt/wheels/sageattention-*.whl 2>/dev/null)"
+
+# Ground truth: inspect the SASS actually embedded in the compiled .so files.
+# This is the only check that cannot be fooled by Python-level symbols.
+RUN set -eux; \
+    rm -rf /tmp/whlx; mkdir -p /tmp/whlx; \
+    python3 -m zipfile -e /opt/wheels/sageattention-*.whl /tmp/whlx; \
+    ls -la /tmp/whlx/sageattention/*.so; \
+    for so in /tmp/whlx/sageattention/*.so; do \
+        echo "== $(basename "$so")"; \
+        cuobjdump --list-elf "$so" | grep -oE 'sm_[0-9]+' | sort -u | sed 's/^/     /'; \
+    done; \
+    ls /tmp/whlx/sageattention/*sm80*.so >/dev/null 2>&1 \
+      || { echo "FATAL: _qattn_sm80 extension absent (RTX 3090 path)"; exit 1; }; \
+    ls /tmp/whlx/sageattention/*sm89*.so >/dev/null 2>&1 \
+      || { echo "FATAL: _qattn_sm89 extension absent (RTX 4090 FP8 path)"; exit 1; }; \
+    cuobjdump --list-elf /tmp/whlx/sageattention/*sm80*.so | grep -q 'sm_86' \
+      || { echo "FATAL: _qattn_sm80 carries no sm_86 SASS"; exit 1; }; \
+    cuobjdump --list-elf /tmp/whlx/sageattention/*sm89*.so | grep -q 'sm_89' \
+      || { echo "FATAL: _qattn_sm89 carries no sm_89 SASS"; exit 1; }; \
+    cuobjdump --list-elf /tmp/whlx/sageattention/_fused*.so | grep -q 'sm_86' \
+      || { echo "FATAL: _fused carries no sm_86 SASS"; exit 1; }; \
+    cuobjdump --list-elf /tmp/whlx/sageattention/_fused*.so | grep -q 'sm_89' \
+      || { echo "FATAL: _fused carries no sm_89 SASS"; exit 1; }; \
+    rm -rf /tmp/whlx; \
+    echo "SASS verification PASSED: sm_86 + sm_89 present in the wheel"
 
 # ===========================================================================
 # STAGE 2 - Runtime Stage: Clean image with prebuilt SageAttention wheel
@@ -81,25 +164,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=sagebuilder /opt/wheels /opt/wheels
 RUN pip install --no-cache-dir /opt/wheels/sageattention-*.whl
 
-# Patch 1: Robust SageAttention non-tautological verification
-RUN python3 - <<'PY'
-import sys, torch, sageattention
-from sageattention import core
+# SageAttention verification.
+#
+# The previous gate asserted core.SM86_ENABLED, which DOES NOT EXIST upstream:
+# sageattention/core.py only ever defines SM80_ENABLED / SM89_ENABLED /
+# SM90_ENABLED. getattr(core, "SM86_ENABLED", None) is therefore permanently
+# None and the gate could never pass, no matter how the wheel was compiled.
+# The RTX 3090 (sm_86) is served by the sm80 extension.
+#
+# It also used hasattr(sageattention, "sageattn_qk_int8_pv_fp8_cuda") to detect
+# a 1.x fallback -- tautological, since that Python function always exists and
+# only asserts SM89_ENABLED when called.
+#
+# verify-sage.py is shared with start.sh: static here, full GPU smoke test on the pod.
+COPY verify-sage.py /usr/local/bin/verify-sage.py
+RUN chmod +x /usr/local/bin/verify-sage.py \
+    && python3 /usr/local/bin/verify-sage.py
 
-print("torch:", torch.__version__, "| cuda:", torch.version.cuda)
-
-if not hasattr(sageattention, "sageattn_qk_int8_pv_fp8_cuda"):
-    sys.exit("FATAL: fp8 CUDA symbol missing -- pip fell back to sageattention 1.0.x")
-
-flags = {n: getattr(core, n, None) for n in ("SM80_ENABLED", "SM86_ENABLED", "SM89_ENABLED", "SM90_ENABLED")}
-print("compiled arch flags:", flags)
-
-missing = [n for n in ("SM86_ENABLED", "SM89_ENABLED") if not flags.get(n)]
-if missing:
-    sys.exit(f"FATAL: SageAttention built WITHOUT {missing}. Check TORCH_CUDA_ARCH_LIST.")
-
-print("Stage 2 SageAttention initial verification PASSED")
-PY
+# On sm_86 sageattn() dispatches to the Triton kernel, which JIT compiles on
+# first use. Park the caches on the persistent volume so pods warm up once.
+ENV TRITON_CACHE_DIR=/workspace/.cache/triton
+ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.cache/inductor
 
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
@@ -207,18 +292,9 @@ COPY download-ltx-models.sh /download-ltx-models.sh
 COPY download-scail2-models.sh /download-scail2-models.sh
 RUN chmod +x /start.sh /download-models.sh /download-ltx-models.sh /download-scail2-models.sh
 
-# Re-run Patch 1 verification as final step
-RUN python3 - <<'PY'
-import sys, torch, sageattention
-from sageattention import core
-if not hasattr(sageattention, "sageattn_qk_int8_pv_fp8_cuda"):
-    sys.exit("FATAL: fp8 CUDA symbol missing in final image")
-flags = {n: getattr(core, n, None) for n in ("SM80_ENABLED", "SM86_ENABLED", "SM89_ENABLED", "SM90_ENABLED")}
-missing = [n for n in ("SM86_ENABLED", "SM89_ENABLED") if not flags.get(n)]
-if missing:
-    sys.exit(f"FATAL: Final image SageAttention missing {missing}")
-print("Final SageAttention verification PASSED")
-PY
+# Final gate: re-run the shared verifier now that all 21 custom node packs are
+# installed, to catch a node requirements.txt having silently replaced the wheel.
+RUN python3 /usr/local/bin/verify-sage.py
 
 # Record build manifest with safe.directory '*'
 RUN set -eux; \

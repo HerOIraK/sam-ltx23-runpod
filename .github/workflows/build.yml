@@ -6,15 +6,23 @@ on:
     paths:
       - "Dockerfile"
       - "start.sh"
+      - "verify-sage.py"
       - "download-models.sh"
+      - "download-ltx-models.sh"
+      - "download-scail2-models.sh"
       - "filter-req.py"
       - "pin-comfyui.sh"
+      - "config/**"
+      - "workflows/**"
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
 concurrency:
   group: docker-build-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui
 
 jobs:
   build:
@@ -36,7 +44,7 @@ jobs:
       - name: Disk before
         run: df -h /
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: docker/setup-buildx-action@v3
 
@@ -52,15 +60,26 @@ jobs:
           push: true
           provenance: false
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui:cuda13-v2
-            ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui:h3-cu130-v2
-            ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui:${{ github.sha }}
+            ${{ env.IMAGE }}:cuda13-v2
+            ${{ env.IMAGE }}:h3-cu130-v2
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          # TORCH_CUDA_ARCH_LIST MUST be ';' separated.
+          # SageAttention's setup.py splits on ';' and ',' only -- a space
+          # separated "8.6 8.9" is parsed as a single capability, matches
+          # startswith("8.6"), sets HAS_SM86 only, and silently skips the
+          # _qattn_sm89 extension that the RTX 4090 needs.
           build-args: |
-            MAX_JOBS=4
-            EXT_PARALLEL=1
+            TORCH_CUDA_ARCH_LIST=8.6;8.9
+            MAX_JOBS=2
+            EXT_PARALLEL=2
             NVCC_THREADS=2
             SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
+          # Registry cache: the sagebuilder stage is keyed on SAGE_REF and the
+          # arch list, so the ~40 min CUDA compile is reused across runs and
+          # only re-executes when one of those actually changes.
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
 
       - name: Disk after
         if: always()

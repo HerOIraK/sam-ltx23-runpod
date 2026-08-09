@@ -1,0 +1,11 @@
+# The image runs Linux. Every shipped script MUST have LF endings or the
+# kernel reads the shebang as "/bin/bash\r" and execution fails with
+# "no such file or directory". Authored on Windows, so pin this explicitly.
+* text=auto eol=lf
+*.sh    text eol=lf
+*.py    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf

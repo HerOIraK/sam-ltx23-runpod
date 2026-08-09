@@ -58,21 +58,15 @@ try:
 except Exception as e:
     print("PyTorch         : FAILED ->", e)
 
-try:
-    import sageattention as s
-    from sageattention import core
-    print("SageAttention Core Flags: SM86_ENABLED=", getattr(core, "SM86_ENABLED", False), "SM89_ENABLED=", getattr(core, "SM89_ENABLED", False))
-    ks = sorted(k for k in dir(s) if k.startswith("sageattn"))
-    print("SageAttention   :", len(ks), "kernels ->", ", ".join(ks) or "NONE")
-    import torch
-    if torch.cuda.is_available():
-        q = torch.randn(1, 8, 256, 64, dtype=torch.float16, device="cuda")
-        o = s.sageattn(q, q.clone(), q.clone(), tensor_layout="HND")
-        torch.cuda.synchronize()
-        print("SageAttention   : Forward pass OK, output shape=", tuple(o.shape))
-except Exception as e:
-    print("SageAttention   : Diagnostic note ->", e)
 PYCHK
+
+# SageAttention verification -- the exact script the build gate uses.
+# NOTE: core.SM86_ENABLED does not exist upstream. The RTX 3090 (sm_86) is
+# served by the sm80 extension, so never assert on SM86_ENABLED.
+if [[ -x /usr/local/bin/verify-sage.py ]]; then
+    python3 /usr/local/bin/verify-sage.py \
+        || echo "WARNING: SageAttention verification failed -- continuing boot so you can debug on the pod"
+fi
 
 echo "--------------------------------------------------------------"
 
@@ -84,7 +78,9 @@ if [[ -d "$VOLUME_DIR" ]]; then
         "$VOLUME_DIR/output" \
         "$VOLUME_DIR/user/default/workflows" \
         "$VOLUME_DIR/user/__manager" \
-        "$VOLUME_DIR/downloads"
+        "$VOLUME_DIR/downloads" \
+        "$VOLUME_DIR/.cache/triton" \
+        "$VOLUME_DIR/.cache/inductor"
 
     rm -rf "$COMFYUI_DIR/models"; ln -s "$VOLUME_DIR/models" "$COMFYUI_DIR/models"
     rm -rf "$COMFYUI_DIR/input";  ln -s "$VOLUME_DIR/input"  "$COMFYUI_DIR/input"
