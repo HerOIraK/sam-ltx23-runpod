@@ -122,17 +122,28 @@ fi
 
 fetched=0
 
-# Correct shallow tag refspec. A bare 'git fetch --depth 1 origin v0.31.0' can
-# fail on repos cloned with a single-branch fetch refspec; naming both sides
-# explicitly avoids that.
-echo "attempt 1: shallow explicit tag refspec"
-if git fetch --depth 1 origin "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}"; then
+# Only pass --depth 1 when the checkout is ALREADY shallow. The ComfyUI tree
+# baked into runpod/comfyui is a full clone ("shallow: no" in the diagnostics
+# above), and --depth 1 would needlessly convert it into a shallow one, which
+# degrades 'git describe' and the build manifest later in the Dockerfile.
+if [ -f .git/shallow ]; then
+    DEPTH_ARG="--depth 1"
+    echo "repo is shallow      -> fetching with --depth 1"
+else
+    DEPTH_ARG=""
+    echo "repo is a full clone -> fetching without --depth (history preserved)"
+fi
+
+# Explicit tag refspec. A bare 'git fetch origin v0.31.1' can fail on repos
+# cloned with a single-branch fetch refspec; naming both sides avoids that.
+echo "attempt 1: explicit tag refspec"
+if git fetch ${DEPTH_ARG} origin "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}"; then
     fetched=1
 fi
 
 if [ "$fetched" -eq 0 ]; then
-    echo "attempt 2: shallow explicit branch refspec"
-    if git fetch --depth 1 origin "+refs/heads/${PIN_REF}:refs/remotes/origin/${PIN_REF}"; then
+    echo "attempt 2: explicit branch refspec"
+    if git fetch ${DEPTH_ARG} origin "+refs/heads/${PIN_REF}:refs/remotes/origin/${PIN_REF}"; then
         fetched=1
     fi
 fi
@@ -176,5 +187,30 @@ if [ -f requirements.txt ]; then
     fi
 fi
 
-echo "final ComfyUI version: $(read_version)"
+FINAL_VERSION="$(read_version)"
+echo "final ComfyUI version: ${FINAL_VERSION}"
+
+# The explicit-pin path never re-checked the floor, so COMFYUI_REF=v0.29.0
+# would have sailed straight through this script. Close that hole.
+if ! ver_ge "$FINAL_VERSION" "$MIN_VERSION"; then
+    echo
+    echo "FATAL: pinned ref '${PIN_REF}' resolves to ComfyUI ${FINAL_VERSION},"
+    echo "       which is still below the required minimum ${MIN_VERSION}."
+    exit 1
+fi
+echo "gate        : ${FINAL_VERSION} >= ${MIN_VERSION} OK"
+
+# Moving the ComfyUI source without moving comfyui-frontend-package is the
+# usual cause of a blank or half-broken web UI, so record what actually landed.
+echo "--- resolved UI packages ---"
+python3 - <<'PY'
+from importlib.metadata import PackageNotFoundError, version
+for pkg in ("comfyui-frontend-package",
+            "comfyui-workflow-templates",
+            "comfyui-embedded-docs"):
+    try:
+        print("    %-30s %s" % (pkg, version(pkg)))
+    except PackageNotFoundError:
+        print("    %-30s (not installed)" % pkg)
+PY
 echo "=============================================================="

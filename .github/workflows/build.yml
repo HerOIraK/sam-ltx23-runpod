@@ -75,9 +75,18 @@ jobs:
             EXT_PARALLEL=2
             NVCC_THREADS=2
             SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
+            COMFYUI_MIN_VERSION=0.31.0
+            COMFYUI_REF=v0.31.1
           # Registry cache: the sagebuilder stage is keyed on SAGE_REF and the
-          # arch list, so the ~40 min CUDA compile is reused across runs and
+          # arch list, so the ~6 min CUDA compile is reused across runs and
           # only re-executes when one of those actually changes.
+          #
+          # On the first run -- and after ANY failed run -- you will see:
+          #   ERROR: failed to configure registry cache importer:
+          #          .../sam-ltx23-comfyui:buildcache: not found
+          # That is expected and non-fatal. buildx only exports the cache tag
+          # when a build SUCCEEDS, so it cannot exist yet. It stops appearing
+          # after the first green run. Do not chase it.
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
 

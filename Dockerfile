@@ -189,9 +189,14 @@ ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.cache/inductor
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Patch 4a (v2): verify the baked ComfyUI meets floor via pin-comfyui.sh
+# Patch 4a (v3): the digest-pinned base image bakes ComfyUI 0.30.0, which is
+# BELOW the 0.31.0 floor the MiniMax H3 core nodes require. pin-comfyui.sh's
+# default "verify only" path can therefore NEVER pass on this base -- it is not
+# a bug in the gate, the gate is correctly reporting that the base is too old.
+# So pin the ref explicitly. v0.31.1 is the newest 0.31.x tag on origin.
+# When you want a newer ComfyUI, bump THIS, not the floor.
 ARG COMFYUI_MIN_VERSION=0.31.0
-ARG COMFYUI_REF=
+ARG COMFYUI_REF=v0.31.1
 
 COPY filter-req.py /usr/local/bin/filter-req.py
 COPY pin-comfyui.sh /usr/local/bin/pin-comfyui.sh

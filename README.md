@@ -5,6 +5,7 @@ This repository contains all the configuration files and scripts needed to build
 ## Features
 
 - **CUDA 13.0 Multi-Stage Build**: Utilizes `runpod/comfyui:cuda13.0` with discarded `sagebuilder` stage to keep runtime image slim.
+- **ComfyUI Pinned to `v0.31.1`**: The base image bakes ComfyUI `0.30.0`, which is below the `0.31.0` floor the MiniMax H3 core nodes need, so the build checks out `v0.31.1` explicitly. See below.
 - **SageAttention 2 Multi-Arch Compilation**: Compiled from git source targeting `TORCH_CUDA_ARCH_LIST="8.6;8.9"` for both RTX 3090 (`sm_86`) and RTX 4090 (`sm_89`). **The `;` is mandatory — see below.**
 - **Spectrum Sampler Acceleration**: Pinned `ComfyUI-Spectrum-MiniMax-H3` (`b5fd9db33267623eb3469ee7d6d4ddf397240025`).
 - **Stability Flags**: Pre-configured `--disable-dynamic-vram`, `--disable-async-offload`, `--disable-smart-memory`, and `--reserve-vram 6`.
@@ -95,6 +96,47 @@ on a 3090 set `PatchSageAttentionKJ` to `auto` or
 `sageattn_qk_int8_pv_fp16_cuda`. A wheel compiled for both architectures is
 correct for both cards; the kernel choice is made at runtime.
 
+### The base image ships ComfyUI 0.30.0, below the 0.31.0 floor
+
+`runpod/comfyui:cuda13.0` (digest `sha256:976ebfd8…`) bakes ComfyUI **0.30.0**.
+`pin-comfyui.sh` defaults to a *verify only* mode that never mutates the checkout
+and simply asserts `baked >= COMFYUI_MIN_VERSION`. Against this base that check
+can never pass:
+
+```
+version file: 0.30.0
+required min: 0.31.0
+explicit pin: <none - verify only>
+RESULT: FAIL - baked ComfyUI 0.30.0 is below the required 0.31.0.
+```
+
+That is the gate working correctly, not a gate bug. Because the base image is
+pinned by digest it will never drift upward on its own, so the fix is to pin the
+ComfyUI ref explicitly:
+
+```dockerfile
+ARG COMFYUI_REF=v0.31.1
+```
+
+`v0.31.1` is the newest `0.31.x` tag on origin. When moving to a newer ComfyUI,
+bump `COMFYUI_REF` — do **not** lower `COMFYUI_MIN_VERSION`, which exists to stop
+the MiniMax H3 core nodes silently loading against a too-old ComfyUI.
+
+Two hardening changes went in alongside it:
+
+- The explicit-pin path now re-checks the floor **after** checkout. Previously
+  `COMFYUI_REF=v0.29.0` would have sailed straight through the script.
+- `git fetch --depth 1` is now used only when the checkout is already shallow.
+  The baked tree is a full clone, and shallowing it degrades `git describe` and
+  the build manifest generated later in the Dockerfile.
+
+After checkout, `requirements.txt` is reinstalled through `filter-req.py`, which
+strips `torch` / `numpy` / `transformers` pins and any `--extra-index-url` so the
+CUDA 13 runtime cannot be replaced out from under the SageAttention wheel. The
+resolved `comfyui-frontend-package` version is printed to the build log — a
+ComfyUI source bump left with a stale frontend package is the usual cause of a
+blank or half-broken web UI.
+
 ### Line endings
 
 This repo is authored on Windows. `.gitattributes` forces `eol=lf` on all shipped
@@ -128,16 +170,33 @@ docker buildx build \
   --build-arg EXT_PARALLEL=2 \
   --build-arg NVCC_THREADS=2 \
   --build-arg SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5 \
+  --build-arg COMFYUI_MIN_VERSION=0.31.0 \
+  --build-arg COMFYUI_REF=v0.31.1 \
   -t youruser/sam-ltx23-comfyui:cuda13-v2 .
 ```
 
 Quote the arch list in your shell — an unquoted `8.6;8.9` is parsed as a command
 separator and silently truncates to `8.6`.
 
-Expect the SageAttention stage to take roughly **25–50 minutes** now that
-`_qattn_sm89` is genuinely compiled, versus the ~3.5 minutes of the broken
-sm_86-only build. The GitHub Actions workflow uses a registry build cache keyed
-on `SAGE_REF` and the arch list, so that cost is paid once.
+Measured on a GitHub-hosted `ubuntu-latest` runner at `MAX_JOBS=2`:
+
+| build | wheel size | `_qattn_sm89` | compile |
+| --- | --- | --- | --- |
+| broken (`8.6 8.9`) | 8,334,376 B | absent | 206 s |
+| fixed (`8.6;8.9`) | 21,590,575 B | 36 MB, `sm_86` + `sm_89` | 361 s |
+
+The GitHub Actions workflow uses a registry build cache keyed on `SAGE_REF` and
+the arch list, so that cost is paid once.
+
+On the first run — and after **any** failed run — buildx logs:
+
+```
+ERROR: failed to configure registry cache importer:
+       .../sam-ltx23-comfyui:buildcache: not found
+```
+
+That is expected and non-fatal. buildx only exports the cache tag when a build
+succeeds, so it cannot exist yet. It stops appearing after the first green run.
 
 ## Verify on the pod
 
