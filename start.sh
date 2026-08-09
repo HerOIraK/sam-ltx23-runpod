@@ -8,8 +8,32 @@ echo "=============================================================="
 echo " MiniMax H3 + LTX-2.3 ComfyUI  |  $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "=============================================================="
 
-# 1. Warm up NVIDIA CUDA Driver & Boot Environment Diagnostics
+# 1. Driver Warmup & CUDA 13 Driver Gate (Patch 3)
 nvidia-smi >/dev/null 2>&1 || true
+
+DRV_FULL="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 | tr -d '[:space:]')"
+DRV_MAJOR="${DRV_FULL%%.*}"
+if [ -n "${DRV_MAJOR}" ] && [ "${DRV_MAJOR}" -lt 580 ] 2>/dev/null; then
+    echo "============================================================="
+    echo " FATAL: NVIDIA driver ${DRV_FULL} detected."
+    echo " This image is CUDA 13 and requires driver >= 580."
+    echo ""
+    echo " Fix: terminate this pod and redeploy. In the RunPod console,"
+    echo " open 'Additional Filters' -> 'CUDA Version' and select 13.0"
+    echo " before choosing a GPU."
+    echo "============================================================="
+    exit 1
+fi
+echo "driver ${DRV_FULL} OK for CUDA 13"
+
+nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv,noheader 2>/dev/null || true
+
+# Display build manifest on boot (Patch 4b)
+if [ -f /opt/build-manifest.txt ]; then
+    echo "------------------ Build Manifest ------------------"
+    cat /opt/build-manifest.txt
+    echo "----------------------------------------------------"
+fi
 
 python3 - <<'PYCHK'
 import sys
@@ -36,10 +60,10 @@ except Exception as e:
 
 try:
     import sageattention as s
+    from sageattention import core
+    print("SageAttention Core Flags: SM86_ENABLED=", getattr(core, "SM86_ENABLED", False), "SM89_ENABLED=", getattr(core, "SM89_ENABLED", False))
     ks = sorted(k for k in dir(s) if k.startswith("sageattn"))
     print("SageAttention   :", len(ks), "kernels ->", ", ".join(ks) or "NONE")
-    if "sageattn_qk_int8_pv_fp8_cuda" not in ks and "sageattn" not in ks:
-        print("  !! SageAttention kernels missing")
     import torch
     if torch.cuda.is_available():
         q = torch.randn(1, 8, 256, 64, dtype=torch.float16, device="cuda")
@@ -74,15 +98,30 @@ if [[ -d "$VOLUME_DIR" ]]; then
     ln -s "$VOLUME_DIR/user" "$COMFYUI_DIR/user"
 fi
 
-# 3. Model Downloads (Disabled by default)
-if [ "${AUTO_DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_LTX_MODELS:-false}" = "true" ]; then
-    echo "[models] AUTO_DOWNLOAD_LTX_MODELS=true -> Running LTX model downloader..."
-    /download-ltx-models.sh || echo "WARN: LTX downloader reported errors; continuing"
-elif [ "${AUTO_DOWNLOAD_SCAIL2_MODELS:-false}" = "true" ]; then
-    echo "[models] AUTO_DOWNLOAD_SCAIL2_MODELS=true -> Running SCAIL2 model downloader..."
-    /download-scail2-models.sh || echo "WARN: SCAIL2 downloader reported errors; continuing"
+# 3. Optional Model Fetch (Patch 6)
+if [ "${DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_LTX_MODELS:-false}" = "true" ]; then
+    echo "[models] Fetching required models into $VOLUME_DIR/models..."
+    export HF_HUB_ENABLE_HF_TRANSFER=1
+    M="$VOLUME_DIR/models"
+    mkdir -p "$M/diffusion_models" "$M/text_encoders" "$M/vae" "$M/loras"
+
+    fetch() {
+        if [ -s "$1" ]; then echo "present: $(basename "$1")"; return 0; fi
+        echo "downloading: $(basename "$1")"
+        aria2c -x 8 -s 8 -c --dir "$(dirname "$1")" --out "$(basename "$1")" \
+            ${HF_TOKEN:+--header "Authorization: Bearer ${HF_TOKEN}"} "$2" \
+            || echo "WARN: failed $(basename "$1")"
+    }
+
+    HF="https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main"
+    fetch "$M/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors" "$HF/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+    fetch "$M/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"        "$HF/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+    fetch "$M/vae/minimax_h3_video_vae_fp16.safetensors"                          "$HF/vae/minimax_h3_video_vae_fp16.safetensors"
+    fetch "$M/vae/minimax_h3_audio_vae_fp32.safetensors"                          "$HF/vae/minimax_h3_audio_vae_fp32.safetensors"
+
+    df -h "$VOLUME_DIR" | tail -n1
 else
-    echo "[models] Auto model downloads are DISABLED (default). No models downloaded on boot."
+    echo "[models] DOWNLOAD_MODELS=false (default). No models fetched automatically on boot."
 fi
 
 # 4. Start VS Code code-server on port 8000 in background

@@ -1,131 +1,27 @@
 # ComfyUI LTX 2.3 RunPod Template (CUDA 13.0)
 
-This repository contains all the configuration files and scripts needed to build, publish, and deploy a custom **RunPod Community Template** for running ComfyUI with LTX 2.3 workflows, including full automation for custom node packages and model downloads.
-
-## Repository Structure
-
-```
-sam-ltx23-runpod/
-├── Dockerfile
-├── start.sh
-├── download-models.sh
-├── README.md
-├── .dockerignore
-└── workflows/
-    ├── ltxDirector2SEED_v10.json
-    └── director_00103-audio_Reddit.json
-```
+This repository contains all the configuration files and scripts needed to build, publish, and deploy a custom **RunPod Community Template** for running ComfyUI with MiniMax H3 and LTX 2.3 workflows.
 
 ## Features
 
-- **CUDA 13.0 Base**: Utilizes the optimized `runpod/comfyui:cuda13.0` foundation.
-- **Pre-installed Custom Nodes**: Automatically bakes 14 required custom node suites (such as `WhatDreamsCost-ComfyUI`, `KJNodes`, `rgthree`, `Comfyroll`, `TinyTerraNodes`, `ArtVenture`, and `CRT-Nodes`) into the Docker image, eliminating initial start delays.
-- **Model Provisioning Automation**: Runs a high-speed `download-models.sh` script using `aria2c` to download large models directly to persistent volume storage on demand.
-- **Persistent Symlinking**: Prevents ComfyUI files from being overwritten or lost when RunPod mounts a persistent network volume at `/workspace`.
-- **Preloaded Workflows**: Ships with two optimized LTX 2.3 workflows in the user's workspace.
+- **CUDA 13.0 Multi-Stage Build**: Utilizes `runpod/comfyui:cuda13.0` with discarded `sagebuilder` stage to keep runtime image slim.
+- **SageAttention 2 Multi-Arch Compilation**: Compiled from git source targeting `TORCH_CUDA_ARCH_LIST="8.6 8.9"` for both RTX 3090 (`sm_86`) and RTX 4090 (`sm_89`).
+- **Spectrum Sampler Acceleration**: Pinned `ComfyUI-Spectrum-MiniMax-H3` (`b5fd9db33267623eb3469ee7d6d4ddf397240025`).
+- **Stability Flags**: Pre-configured `--disable-dynamic-vram`, `--disable-async-offload`, `--disable-smart-memory`, and `--reserve-vram 6`.
+- **Driver Gate**: Automatically checks for NVIDIA host driver `>= 580` required for CUDA 13 images.
 
 ---
 
-## 1. How to Build & Push the Docker Image
-You can build the Docker image in two ways: **Cloud Build (Recommended)** or **Local Build**.
+## Technical Notes
 
-### Option A: Cloud Build (No downloads on your PC)
-This method uses **GitHub Actions** to build the image entirely in the cloud, requiring zero local downloads or disk space.
+### SageAttention SM89 Error Explanation (Patch 7 Correction)
+`AssertionError: SM89 kernel is not available` means the installed SageAttention wheel was compiled without an `sm_89` cubin. It is a build-time defect and is independent of which GPU is present. Rebuilding with `TORCH_CUDA_ARCH_LIST="8.6 8.9"` and verifying `core.SM89_ENABLED` is `True` fixes this. Separately, the RTX 3090 is `sm_86` and has no FP8 tensor cores, so on a 3090 set `PatchSageAttentionKJ` to `auto` or `sageattn_qk_int8_pv_fp16_cuda`. A wheel compiled for both architectures is correct for both cards; the kernel choice is made at runtime.
 
-1. **Create a GitHub Repository**: Create a new repository on GitHub (e.g., `sam-ltx23-runpod`).
-2. **Add Secrets**: In your GitHub repository, go to **Settings → Secrets and variables → Actions** and add two Secrets:
-   - `DOCKERHUB_USERNAME`: Your Docker Hub username (`mkv420`).
-   - `DOCKERHUB_TOKEN`: A Personal Access Token from Docker Hub settings (not your password).
-3. **Push to GitHub**: Push these files to your repository. The workflow in `.github/workflows/docker-image.yml` will automatically trigger, build the container, and push it directly to your Docker Hub repository.
+### Spectrum Step Budget Operational Note (Patch 8)
+At 8 total steps (e.g., in a 20-step run with `warmup_steps = 5` and `tail_actual_steps = 1`), Spectrum silently floors `tail_actual_steps` at 3 with a deterministic sampler:
+`warmup (5) + tail (3) = 8 of 8 steps executed normally (0 steps forecast)`.
+Spectrum is skipping no steps while paying history-buffer overhead. To gain speedup:
+1. Raise step count to 16–20 so there is a middle section to forecast, OR
+2. Lower `warmup_steps` to 1–2 inside the 8-step budget.
 
-### Option B: Local Build (Requires Docker Desktop)
-From the root directory of this repository:
-
-1. **Log in to Docker Hub**:
-   ```bash
-   docker login
-   ```
-
-2. **Build the Docker Image**:
-   ```bash
-   docker build -t mkv420/sam-ltx23-comfyui:1.0.0 .
-   ```
-   *(Note: The build process clones all custom node repositories and installs Python packages. This may take several minutes.)*
-
-3. **Push the Image**:
-   ```bash
-   docker push mkv420/sam-ltx23-comfyui:1.0.0
-   ```
-
----
-
-## 2. Setting Up the RunPod Template
-
-Go to the **RunPod Console → Templates → New Template** and configure the fields as follows:
-
-| Field | Configuration Value |
-| :--- | :--- |
-| **Template Name** | `Sam LTX 2.3 ComfyUI (CUDA 13.0)` |
-| **Template Type** | `Pods` |
-| **Compute Type** | `NVIDIA GPU` |
-| **Container Image** | `mkv420/sam-ltx23-comfyui:1.0.0` |
-| **Container Disk** | `30 GB` |
-| **Volume Disk** | `100 - 150 GB` |
-| **Volume Mount Path** | `/workspace` |
-| **Expose HTTP Port** | `8188` |
-| **Start Command** | *Leave Empty* (allows container's own `CMD ["/start.sh"]` to run) |
-
-### Environment Variables
-
-Under the **Environment Variables** section of the template config, add:
-
-1. **Enable LTX 2.3 Model Auto-Download**:
-   - **Key**: `AUTO_DOWNLOAD_LTX_MODELS` (or `AUTO_DOWNLOAD_MODELS`)
-   - **Value**: `true`
-2. **Enable SCAIL-2 Model Auto-Download**:
-   - **Key**: `AUTO_DOWNLOAD_SCAIL2_MODELS`
-   - **Value**: `true`
-3. **Hugging Face Authentication Token (Gated Access & Maximum Speed)**:
-   - **Key**: `HF_TOKEN`
-   - **Value**: `your_huggingface_read_token` *(Crucial to unlock gated Hugging Face repositories like LTX 2.3 and Gemma 3, and to route downloads through high-speed CDN servers).*
-
----
-
-## 3. Dedicated Download Scripts
-You can run these scripts directly from your VS Code terminal at any time:
-- `/download-ltx-models.sh` (or `/download-models.sh`): Downloads all 8 LTX 2.3 & Gemma 3 models at maximum uncapped speed via Rust-accelerated `hf_transfer`.
-- `/download-scail2-models.sh`: Downloads all 8 SCAIL-2 & Wan 2.1 models at maximum uncapped speed via `hf_transfer`.
-
----
-
-## 4. Included Workflows
-
-Workflows are copied automatically to `/workspace/user/default/workflows/` on launch:
-
-1. **`ltxDirector2SEED_v10.json`**: An all-in-one timeline editing workflow utilizing the LTX Director node, supporting frame scheduling, camera prompts, and prompt relaying.
-2. **`director_00103-audio_Reddit.json`**: An advanced multi-stage timeline workflow featuring ControlNet, custom audio reference inputs, lipsync mapping, and RTX Video Super Resolution upscaling.
-3. **`Motion_control_SCAIL2_workflow.json`**: A high-fidelity ControlNet / Motion Control workflow leveraging SCAIL-2 (Wan 2.1) and Segment Anything (SAM 3.1) for video-to-video motion guidance.
-
----
-
-## 5. Installed Custom Nodes
-
-The image includes the following node packages cloned directly into `/opt/ComfyUI/custom_nodes`:
-- `ComfyUI-LTXVideo` (LTX video core nodes)
-- `WhatDreamsCost-ComfyUI` (LTX Director core)
-- `ComfyUI-KJNodes` (Loaders, VAE selectors, etc.)
-- `ComfyUI-VideoHelperSuite` (Video load/save pipelines)
-- `rgthree-comfy` (Bypasser switch clusters)
-- `ComfyUI-Impact-Pack` (General flow pipelines)
-- `ComfyUI-Easy-Use` (UI nodes & pipe relays)
-- `ComfyUI-mxToolkit` (mxSliders and UI utilities)
-- `ComfyUI_tinyterraNodes` (TinyTerra nodes)
-- `ComfyUI_Comfyroll_CustomNodes` (Comfyroll Studio nodes)
-- `Nvidia_RTX_Nodes_ComfyUI` (NVIDIA RTX Video Super Resolution)
-- `comfyui-art-venture` (Art Venture preprocess pipelines)
-- `CRT-Nodes` (Graph utils, WAN & LTX samplers)
-- `ComfyUI-DaSiWa-Nodes` (DaSiWa status switches, resolution calculators, LLM integration, metadata & video tools)
-- `comfyui_controlnet_aux` (ControlNet preprocessors like DWPose, OpenPose, Depth, Canny, LineArt, Zoe, etc.)
-- `ComfyUI-Frame-Interpolation` (VFI frame interpolation models: RIFE, FILM, AMT, etc.)
-- `Civicomfy` (Civitai model downloader and metadata manager inside ComfyUI)
-- `ComfyUI-Manager` (Node update, verification, and diagnostics management)
+*Note:* Spectrum is incompatible with `EasyCache` / `LazyCache` on the same model branch. Do not enable both simultaneously.
