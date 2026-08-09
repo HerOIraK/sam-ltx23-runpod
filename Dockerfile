@@ -26,25 +26,37 @@ ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 ENV CPATH=/usr/local/cuda/include
 ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include
 
+# Tightened cusparse.h check (Section 5a)
 RUN set -eux; \
     nvcc --version; \
-    HDR="$(find /usr /usr/local -name cusparse.h -print -quit)"; \
-    test -n "$HDR"; \
-    echo "cusparse.h -> $HDR"
+    echo "CUDA_HOME=${CUDA_HOME}"; \
+    readlink -f "${CUDA_HOME}" || true; \
+    test -f "${CUDA_HOME}/include/cusparse.h" \
+      || { echo "FATAL: cusparse.h missing from ${CUDA_HOME}/include"; \
+           echo "other copies found:"; find /usr -name cusparse.h 2>/dev/null; exit 1; }; \
+    echo "cusparse.h present in ${CUDA_HOME}/include"
 
-ARG TORCH_CUDA_ARCH_LIST="8.6 8.9"
+ARG TORCH_CUDA_ARCH_LIST="8.6;8.9"
 ARG MAX_JOBS=4
 ARG EXT_PARALLEL=1
 ARG NVCC_THREADS=2
 ARG SAGE_REPO=https://github.com/thu-ml/SageAttention.git
-ARG SAGE_REF=main
+ARG SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
 
+# Stage 1 arch sanitiser + _get_cuda_arch_flags probe (Section 3 & 4)
 RUN set -eux; \
-    export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"; \
+    ARCH="$(printf '%s' "${TORCH_CUDA_ARCH_LIST}" \
+            | tr -d '\042\047' \
+            | tr ' ,' ';;' \
+            | sed -e 's/;;*/;/g' -e 's/^;//' -e 's/;$//')"; \
+    test -n "$ARCH" || { echo "FATAL: TORCH_CUDA_ARCH_LIST is empty"; exit 1; }; \
+    echo "normalised TORCH_CUDA_ARCH_LIST = [$ARCH]"; \
+    export TORCH_CUDA_ARCH_LIST="$ARCH"; \
+    python3 -c "import sys; from torch.utils.cpp_extension import _get_cuda_arch_flags as g; f=g(); print('nvcc arch flags:', f); sys.exit(0 if all(any(w in x for x in f) for w in ('compute_86','compute_89')) else 'FATAL: arch flags missing compute_86 and/or compute_89')"; \
     export MAX_JOBS="${MAX_JOBS}"; \
     export EXT_PARALLEL="${EXT_PARALLEL}"; \
     export NVCC_APPEND_FLAGS="--threads ${NVCC_THREADS}"; \
-    echo "Building SageAttention wheel: arch=${TORCH_CUDA_ARCH_LIST} jobs=${MAX_JOBS}"; \
+    echo "Building SageAttention: arch=${TORCH_CUDA_ARCH_LIST} jobs=${MAX_JOBS} ref=${SAGE_REF}"; \
     mkdir -p /opt/wheels; \
     pip wheel --no-cache-dir --no-build-isolation --no-deps -w /opt/wheels \
         "git+${SAGE_REPO}@${SAGE_REF}"; \
