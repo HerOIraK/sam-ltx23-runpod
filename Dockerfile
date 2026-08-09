@@ -26,7 +26,7 @@ ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 ENV CPATH=/usr/local/cuda/include
 ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include
 
-# Tightened cusparse.h check (Section 5a)
+# Tightened cusparse.h check
 RUN set -eux; \
     nvcc --version; \
     echo "CUDA_HOME=${CUDA_HOME}"; \
@@ -36,19 +36,19 @@ RUN set -eux; \
            echo "other copies found:"; find /usr -name cusparse.h 2>/dev/null; exit 1; }; \
     echo "cusparse.h present in ${CUDA_HOME}/include"
 
-ARG TORCH_CUDA_ARCH_LIST="8.6;8.9"
+ARG TORCH_CUDA_ARCH_LIST="8.6 8.9"
 ARG MAX_JOBS=4
 ARG EXT_PARALLEL=1
 ARG NVCC_THREADS=2
 ARG SAGE_REPO=https://github.com/thu-ml/SageAttention.git
 ARG SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
 
-# Stage 1 arch sanitiser + _get_cuda_arch_flags probe (Section 3 & 4)
+# Stage 1 arch sanitiser (space-delimited for SageAttention setup.py) + _get_cuda_arch_flags probe
 RUN set -eux; \
     ARCH="$(printf '%s' "${TORCH_CUDA_ARCH_LIST}" \
             | tr -d '\042\047' \
-            | tr ' ,' ';;' \
-            | sed -e 's/;;*/;/g' -e 's/^;//' -e 's/;$//')"; \
+            | tr ';,' '  ' \
+            | sed -e 's/  */ /g' -e 's/^ //' -e 's/ $//')"; \
     test -n "$ARCH" || { echo "FATAL: TORCH_CUDA_ARCH_LIST is empty"; exit 1; }; \
     echo "normalised TORCH_CUDA_ARCH_LIST = [$ARCH]"; \
     export TORCH_CUDA_ARCH_LIST="$ARCH"; \
@@ -119,7 +119,7 @@ RUN COMFYUI_MIN_VERSION="${COMFYUI_MIN_VERSION}" \
 # Upgrade huggingface_hub without touching pinned frontend/manager packages
 RUN pip install --no-cache-dir --upgrade "huggingface_hub[cli]" hf_transfer
 
-# Install ComfyUI-Manager dependencies directly from tree if present (Section 3)
+# Install ComfyUI-Manager dependencies directly from tree if present
 RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
     && python3 /usr/local/bin/filter-req.py manager_requirements.txt /tmp/mgr.txt \
     && pip install --no-cache-dir -r /tmp/mgr.txt || true
@@ -128,7 +128,7 @@ WORKDIR /opt/ComfyUI/custom_nodes
 
 RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma
 
-# Clone required custom node packs (Section 3: Pip Manager only, ComfyUI-Manager removed from custom_nodes)
+# Clone required custom node packs (Pip Manager only, ComfyUI-Manager removed from custom_nodes)
 RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git && \
     git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
@@ -152,7 +152,7 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/Steudio/ComfyUI_Steudio.git && \
     git clone --depth 1 https://github.com/pixaroma/ComfyUI-Pixaroma.git
 
-# Section 4: Robust LTXVideo import patch
+# Robust LTXVideo import patch
 RUN python3 - <<'PY'
 import pathlib, sys
 p = pathlib.Path("/opt/ComfyUI/custom_nodes/ComfyUI-LTXVideo/pyramid_blending.py")
@@ -170,7 +170,7 @@ else:
     sys.exit("FATAL: LTXVideo import patch pattern no longer matches upstream pyramid_blending.py")
 PY
 
-# Section 5: Filter core pinned dependencies from custom node requirements using filter-req.py
+# Filter core pinned dependencies from custom node requirements using filter-req.py
 RUN set -eux; \
     TORCH_BEFORE="$(python3 -c 'import torch; print(torch.__version__)')"; \
     echo "torch before custom-node deps: ${TORCH_BEFORE}"; \
@@ -220,7 +220,7 @@ if missing:
 print("Final SageAttention verification PASSED")
 PY
 
-# Patch 4b & Section 7a: Record build manifest with safe.directory '*'
+# Record build manifest with safe.directory '*'
 RUN set -eux; \
     git config --global --add safe.directory '*'; \
     { \

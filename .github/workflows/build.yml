@@ -57,7 +57,6 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui:${{ github.sha }}
           build-args: |
-            TORCH_CUDA_ARCH_LIST=8.6;8.9
             MAX_JOBS=4
             EXT_PARALLEL=1
             NVCC_THREADS=2
