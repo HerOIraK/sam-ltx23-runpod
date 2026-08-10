@@ -47,17 +47,6 @@ ARG SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
 
 # ---------------------------------------------------------------------------
 # Stage 1 arch normaliser  ->  ';' separated
-#
-# SageAttention's setup.py parses the arch list with
-#     arch_list_env.replace(",", ";").split(";")
-# It NEVER splits on whitespace. The old sanitiser did `tr ';,' '  '`, so
-# "8.6;8.9" became the single token "8.6 8.9", which matched
-# capability.startswith("8.6") -> HAS_SM86=True, HAS_SM89=False.
-# Result: only -gencode compute_86, no _qattn_sm89 extension, and a 4090 that
-# dies with "no kernel image is available for execution on the device".
-#
-# The old torch _get_cuda_arch_flags() probe hid this, because torch DOES
-# split on whitespace -- it validated an arch list SageAttention rejects.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     ARCH="$(printf '%s' "${TORCH_CUDA_ARCH_LIST}" \
@@ -68,8 +57,7 @@ RUN set -eux; \
     printf '%s' "$ARCH" > /etc/sage-arch; \
     echo "normalised TORCH_CUDA_ARCH_LIST = [$ARCH]"
 
-# Preflight with SageAttention's OWN parser. Refuses to start a 40 minute
-# compile unless both _qattn_sm80 (3090/sm_86) and _qattn_sm89 (4090) result.
+# Preflight with SageAttention's OWN parser.
 RUN python3 - <<'PY'
 import pathlib, sys
 
@@ -77,7 +65,7 @@ env = pathlib.Path("/etc/sage-arch").read_text().strip()
 SUPPORTED = {"8.0", "8.6", "8.9", "9.0", "10.0", "12.0", "12.1"}
 
 caps = set()
-for item in env.replace(",", ";").split(";"):          # setup.py, verbatim
+for item in env.replace(",", ";").split(";"):
     it = item.strip().lower().replace("sm_", "").replace("compute_", "").replace("a", "")
     if not it:
         continue
@@ -96,8 +84,8 @@ if bad:
 has = {a: any(c.startswith(a) for c in caps) for a in ("8.0", "8.6", "8.9", "9.0")}
 print("HAS_SMxx            :", has)
 
-sm80 = any(has.values())            # one extension serves sm_80 and sm_86
-sm89 = has["8.9"] or has["9.0"]     # FP8 path
+sm80 = any(has.values())
+sm89 = has["8.9"] or has["9.0"]
 print("will build          :",
       [n for n, on in (("_qattn_sm80", sm80), ("_qattn_sm89", sm89), ("_fused", True)) if on])
 
@@ -121,8 +109,7 @@ RUN set -eux; \
     ls -la /opt/wheels; \
     test -n "$(ls /opt/wheels/sageattention-*.whl 2>/dev/null)"
 
-# Ground truth: inspect the SASS actually embedded in the compiled .so files.
-# This is the only check that cannot be fooled by Python-level symbols.
+# Ground truth SASS verification
 RUN set -eux; \
     rm -rf /tmp/whlx; mkdir -p /tmp/whlx; \
     python3 -m zipfile -e /opt/wheels/sageattention-*.whl /tmp/whlx; \
@@ -164,37 +151,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=sagebuilder /opt/wheels /opt/wheels
 RUN pip install --no-cache-dir /opt/wheels/sageattention-*.whl
 
-# SageAttention verification.
-#
-# The previous gate asserted core.SM86_ENABLED, which DOES NOT EXIST upstream:
-# sageattention/core.py only ever defines SM80_ENABLED / SM89_ENABLED /
-# SM90_ENABLED. getattr(core, "SM86_ENABLED", None) is therefore permanently
-# None and the gate could never pass, no matter how the wheel was compiled.
-# The RTX 3090 (sm_86) is served by the sm80 extension.
-#
-# It also used hasattr(sageattention, "sageattn_qk_int8_pv_fp8_cuda") to detect
-# a 1.x fallback -- tautological, since that Python function always exists and
-# only asserts SM89_ENABLED when called.
-#
-# verify-sage.py is shared with start.sh: static here, full GPU smoke test on the pod.
 COPY verify-sage.py /usr/local/bin/verify-sage.py
 RUN chmod +x /usr/local/bin/verify-sage.py \
     && python3 /usr/local/bin/verify-sage.py
 
-# On sm_86 sageattn() dispatches to the Triton kernel, which JIT compiles on
-# first use. Park the caches on the persistent volume so pods warm up once.
 ENV TRITON_CACHE_DIR=/workspace/.cache/triton
 ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.cache/inductor
 
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Patch 4a (v3): the digest-pinned base image bakes ComfyUI 0.30.0, which is
-# BELOW the 0.31.0 floor the MiniMax H3 core nodes require. pin-comfyui.sh's
-# default "verify only" path can therefore NEVER pass on this base -- it is not
-# a bug in the gate, the gate is correctly reporting that the base is too old.
-# So pin the ref explicitly. v0.31.1 is the newest 0.31.x tag on origin.
-# When you want a newer ComfyUI, bump THIS, not the floor.
+# Patch 4a (v3): Pin ComfyUI explicitly to v0.31.1
 ARG COMFYUI_MIN_VERSION=0.31.0
 ARG COMFYUI_REF=v0.31.1
 
@@ -216,9 +183,13 @@ RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
-RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma
+# Cleanup list
+RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma ComfyUI-JITBlockSwap comfyui-h3-mlp-chunk
 
-# Clone required custom node packs (Pip Manager only, ComfyUI-Manager removed from custom_nodes)
+# Copy custom node: comfyui-h3-mlp-chunk
+COPY custom_nodes/comfyui-h3-mlp-chunk ./comfyui-h3-mlp-chunk
+
+# Clone required custom node packs
 RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git && \
     git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
@@ -240,7 +211,9 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git -C ComfyUI-Spectrum-MiniMax-H3 checkout b5fd9db33267623eb3469ee7d6d4ddf397240025 && \
     git clone --depth 1 https://github.com/willmiao/ComfyUI-Lora-Manager.git && \
     git clone --depth 1 https://github.com/Steudio/ComfyUI_Steudio.git && \
-    git clone --depth 1 https://github.com/pixaroma/ComfyUI-Pixaroma.git
+    git clone --depth 1 https://github.com/pixaroma/ComfyUI-Pixaroma.git && \
+    git clone https://github.com/lovemachine100/ComfyUI-JITBlockSwap.git && \
+    git -C ComfyUI-JITBlockSwap checkout 3b56b2d3514d730c8bec8354d6e9a6ca35c60fdf
 
 # Robust LTXVideo import patch
 RUN python3 - <<'PY'
@@ -297,26 +270,13 @@ COPY download-ltx-models.sh /download-ltx-models.sh
 COPY download-scail2-models.sh /download-scail2-models.sh
 RUN chmod +x /start.sh /download-models.sh /download-ltx-models.sh /download-scail2-models.sh
 
-# Final gate: re-run the shared verifier now that all 21 custom node packs are
-# installed, to catch a node requirements.txt having silently replaced the wheel.
+# Final gate: re-run the shared verifier
 RUN python3 /usr/local/bin/verify-sage.py
 
-# Record build manifest with safe.directory '*'
-RUN set -eux; \
-    git config --global --add safe.directory '*'; \
-    { \
-      echo "# Build manifest"; \
-      echo "built_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"; \
-      echo "torch: $(python3 -c 'import torch;print(torch.__version__)')"; \
-      echo "torch_cuda: $(python3 -c 'import torch;print(torch.version.cuda)')"; \
-      echo "comfyui: $(git -C /opt/ComfyUI describe --tags --always)"; \
-      echo "custom_nodes:"; \
-      for d in /opt/ComfyUI/custom_nodes/*/; do \
-        [ -d "$d/.git" ] || continue; \
-        echo "  $(basename "$d"): $(git -C "$d" rev-parse HEAD)"; \
-      done; \
-    } > /opt/build-manifest.txt; \
-    cat /opt/build-manifest.txt
+# Record build manifest using standalone build-manifest.sh script
+COPY build-manifest.sh /usr/local/bin/build-manifest.sh
+RUN chmod +x /usr/local/bin/build-manifest.sh \
+ && /usr/local/bin/build-manifest.sh /opt/build-manifest.txt
 
 WORKDIR /opt/ComfyUI
 EXPOSE 8188 8000

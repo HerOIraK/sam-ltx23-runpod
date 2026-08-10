@@ -61,8 +61,6 @@ except Exception as e:
 PYCHK
 
 # SageAttention verification -- the exact script the build gate uses.
-# NOTE: core.SM86_ENABLED does not exist upstream. The RTX 3090 (sm_86) is
-# served by the sm80 extension, so never assert on SM86_ENABLED.
 if [[ -x /usr/local/bin/verify-sage.py ]]; then
     python3 /usr/local/bin/verify-sage.py \
         || echo "WARNING: SageAttention verification failed -- continuing boot so you can debug on the pod"
@@ -74,6 +72,7 @@ echo "--------------------------------------------------------------"
 if [[ -d "$VOLUME_DIR" ]]; then
     mkdir -p \
         "$VOLUME_DIR/models" \
+        "$VOLUME_DIR/models/clip_projections" \
         "$VOLUME_DIR/input" \
         "$VOLUME_DIR/output" \
         "$VOLUME_DIR/user/default/workflows" \
@@ -99,7 +98,7 @@ if [ "${DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_MODELS:-false}
     echo "[models] Fetching required models into $VOLUME_DIR/models..."
     export HF_HUB_ENABLE_HF_TRANSFER=1
     M="$VOLUME_DIR/models"
-    mkdir -p "$M/diffusion_models" "$M/text_encoders" "$M/vae" "$M/loras"
+    mkdir -p "$M/diffusion_models" "$M/text_encoders" "$M/vae" "$M/loras" "$M/clip_projections"
 
     fetch() {
         if [ -s "$1" ]; then echo "present: $(basename "$1")"; return 0; fi
@@ -138,28 +137,29 @@ if [ "${ENABLE_CODE_SERVER:-true}" = "true" ]; then
     fi
 fi
 
-# 5. Build ComfyUI launch command with stability flags for MiniMax H3 / int8 convrot
+# 5. Build ComfyUI launch command (TASK 1: Opt-in memory management flags)
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 ARGS=(main.py --listen 0.0.0.0 --port 8188 --enable-cors-header)
 
-[ "${ENABLE_MANAGER:-true}"        = "true" ]  && ARGS+=(--enable-manager)
-[ "${DISABLE_DYNAMIC_VRAM:-true}"  = "true" ]  && ARGS+=(--disable-dynamic-vram)
-[ "${DISABLE_ASYNC_OFFLOAD:-true}" = "true" ]  && ARGS+=(--disable-async-offload)
-[ "${DISABLE_SMART_MEMORY:-true}"  = "true" ]  && ARGS+=(--disable-smart-memory)
-[ "${DISABLE_PINNED_MEMORY:-false}" = "true" ] && ARGS+=(--disable-pinned-memory)
+[ "${ENABLE_MANAGER:-true}" = "true" ] && ARGS+=(--enable-manager)
+[ "${DISABLE_DYNAMIC_VRAM:-0}" = "1" ] && ARGS+=(--disable-dynamic-vram)
+[ "${DISABLE_ASYNC_OFFLOAD:-0}" = "1" ] && ARGS+=(--disable-async-offload)
+[ "${DISABLE_SMART_MEMORY:-0}" = "1" ] && ARGS+=(--disable-smart-memory)
+[ "${DISABLE_PINNED_MEMORY:-0}" = "1" ] && ARGS+=(--disable-pinned-memory)
 
-RESERVE_VAL="${RESERVE_VRAM:-6}"
-if [ "$RESERVE_VAL" != "false" ] && [ -n "$RESERVE_VAL" ]; then
-  ARGS+=(--reserve-vram "$RESERVE_VAL")
-fi
+ARGS+=(--reserve-vram "${RESERVE_VRAM:-0.5}")
 
 if [ -n "${COMFY_EXTRA_ARGS:-}" ]; then
   # shellcheck disable=SC2206
   ARGS+=(${COMFY_EXTRA_ARGS})
 fi
 
+# TASK 3: Boot diagnostics - echo resolved ComfyUI version and expanded ARGS array
+COMFY_VERSION="$(python3 -c "import pathlib, re; p=pathlib.Path('/opt/ComfyUI/comfyui_version.py'); print(re.search(r'__version__\s*=\s*[\"']([^\"']+)[\"']', p.read_text()).group(1) if p.exists() else 'unknown')" 2>/dev/null || echo "unknown")"
+
 echo "--------------------------------------------------------------"
+echo "Resolved ComfyUI Version: ${COMFY_VERSION}"
 echo "Launching ComfyUI: python3 ${ARGS[*]}"
 echo "--------------------------------------------------------------"
 cd "$COMFYUI_DIR"
