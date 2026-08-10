@@ -183,13 +183,13 @@ RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
-# Cleanup list
-RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma ComfyUI-JITBlockSwap comfyui-h3-mlp-chunk
+# Cleanup list (added ComfyUI-SolAttn_triton)
+RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma ComfyUI-JITBlockSwap comfyui-h3-mlp-chunk ComfyUI-SolAttn_triton
 
 # Copy custom node: comfyui-h3-mlp-chunk
 COPY custom_nodes/comfyui-h3-mlp-chunk ./comfyui-h3-mlp-chunk
 
-# Clone required custom node packs
+# Clone required custom node packs (added ComfyUI-SolAttn_triton)
 RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git && \
     git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
@@ -213,7 +213,8 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/Steudio/ComfyUI_Steudio.git && \
     git clone --depth 1 https://github.com/pixaroma/ComfyUI-Pixaroma.git && \
     git clone https://github.com/lovemachine100/ComfyUI-JITBlockSwap.git && \
-    git -C ComfyUI-JITBlockSwap checkout 3b56b2d3514d730c8bec8354d6e9a6ca35c60fdf
+    git -C ComfyUI-JITBlockSwap checkout 3b56b2d3514d730c8bec8354d6e9a6ca35c60fdf && \
+    git clone --depth 1 https://github.com/kijai/ComfyUI-SolAttn_triton.git
 
 # Robust LTXVideo import patch
 RUN python3 - <<'PY'
