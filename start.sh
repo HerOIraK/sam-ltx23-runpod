@@ -119,14 +119,11 @@ else
     echo "[models] DOWNLOAD_MODELS=false (default). No models fetched automatically on boot."
 fi
 
-# 4. Security hardened VS Code code-server startup (Section 6a & 6b)
+# 4. VS Code code-server startup (Port 8000 - Enabled by default)
 if [ "${ENABLE_CODE_SERVER:-true}" = "true" ]; then
-    if [ -z "${CODE_SERVER_PASSWORD:-}" ]; then
-        echo "WARNING: CODE_SERVER_PASSWORD is not set. Not starting code-server."
-        echo "         Set CODE_SERVER_PASSWORD as a RunPod template env var to enable code-server."
-    else
-        echo "Starting code-server on port 8000 (password auth enabled)..."
-        mkdir -p /workspace/code-server
+    mkdir -p /workspace/code-server
+    if [ -n "${CODE_SERVER_PASSWORD:-}" ]; then
+        echo "Starting code-server on port 8000 (password authentication enabled)..."
         PASSWORD="${CODE_SERVER_PASSWORD}" nohup code-server \
             --bind-addr 0.0.0.0:8000 \
             --auth password \
@@ -134,10 +131,19 @@ if [ "${ENABLE_CODE_SERVER:-true}" = "true" ]; then
             --user-data-dir /workspace/code-server \
             /workspace \
             >/workspace/code-server.log 2>&1 &
+    else
+        echo "Starting code-server on port 8000 (no password required)..."
+        nohup code-server \
+            --bind-addr 0.0.0.0:8000 \
+            --auth none \
+            --disable-telemetry \
+            --user-data-dir /workspace/code-server \
+            /workspace \
+            >/workspace/code-server.log 2>&1 &
     fi
 fi
 
-# 5. Build ComfyUI launch command (TASK 1: Opt-in memory management flags)
+# 5. Build ComfyUI launch command (Opt-in memory management flags)
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 ARGS=(main.py --listen 0.0.0.0 --port 8188 --enable-cors-header)
@@ -155,7 +161,7 @@ if [ -n "${COMFY_EXTRA_ARGS:-}" ]; then
   ARGS+=(${COMFY_EXTRA_ARGS})
 fi
 
-# TASK 3: Boot diagnostics - echo resolved ComfyUI version and expanded ARGS array
+# Boot diagnostics - echo resolved ComfyUI version and expanded ARGS array
 COMFY_VERSION="$(python3 -c "import pathlib, re; p=pathlib.Path('/opt/ComfyUI/comfyui_version.py'); print(re.search(r'__version__\s*=\s*[\"']([^\"']+)[\"']', p.read_text()).group(1) if p.exists() else 'unknown')" 2>/dev/null || echo "unknown")"
 
 echo "--------------------------------------------------------------"
