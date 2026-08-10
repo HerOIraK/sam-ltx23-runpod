@@ -273,6 +273,11 @@ RUN chmod +x /start.sh /download-models.sh /download-ltx-models.sh /download-sca
 # Final gate: re-run the shared verifier
 RUN python3 /usr/local/bin/verify-sage.py
 
+# Generate pip constraints file to lock ABI-critical packages
+COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
+RUN python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
+ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
+
 # Record build manifest using standalone build-manifest.sh script
 COPY build-manifest.sh /usr/local/bin/build-manifest.sh
 RUN chmod +x /usr/local/bin/build-manifest.sh \
