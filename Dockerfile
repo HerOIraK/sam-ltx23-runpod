@@ -37,8 +37,8 @@ RUN set -eux; \
            echo "other copies found:"; find /usr -name cusparse.h 2>/dev/null; exit 1; }; \
     echo "cusparse.h present in ${CUDA_HOME}/include"
 
-# MUST be ';' separated. See the normaliser + preflight below for why.
-ARG TORCH_CUDA_ARCH_LIST="8.6;8.9"
+# MUST be ';' separated. Supports RTX 3090 (8.6), RTX 4090 (8.9), and RTX 5090 (12.0).
+ARG TORCH_CUDA_ARCH_LIST="8.6;8.9;12.0"
 ARG MAX_JOBS=2
 ARG EXT_PARALLEL=2
 ARG NVCC_THREADS=2
@@ -79,21 +79,21 @@ print("parsed capabilities :", sorted(caps))
 
 bad = [c for c in caps if c.replace("+PTX", "") not in SUPPORTED]
 if bad:
-    sys.exit(f"FATAL: unparseable capability {bad}. Separator must be ';', e.g. '8.6;8.9'.")
+    sys.exit(f"FATAL: unparseable capability {bad}. Separator must be ';', e.g. '8.6;8.9;12.0'.")
 
-has = {a: any(c.startswith(a) for c in caps) for a in ("8.0", "8.6", "8.9", "9.0")}
+has = {a: any(c.startswith(a) for c in caps) for a in ("8.0", "8.6", "8.9", "9.0", "12.0")}
 print("HAS_SMxx            :", has)
 
 sm80 = any(has.values())
-sm89 = has["8.9"] or has["9.0"]
+sm89 = has["8.9"] or has["9.0"] or has["12.0"]
 print("will build          :",
       [n for n, on in (("_qattn_sm80", sm80), ("_qattn_sm89", sm89), ("_fused", True)) if on])
 
 if not sm80:
     sys.exit("FATAL: _qattn_sm80 would not be built -> RTX 3090 unsupported")
 if not sm89:
-    sys.exit(f"FATAL: _qattn_sm89 would not be built -> RTX 4090 FP8 unsupported "
-             f"(arch list {env!r} never yielded 8.9)")
+    sys.exit(f"FATAL: _qattn_sm89 would not be built -> RTX 4090/5090 FP8 unsupported "
+             f"(arch list {env!r} never yielded 8.9 or 12.0)")
 print("arch preflight PASSED")
 PY
 
@@ -121,7 +121,7 @@ RUN set -eux; \
     ls /tmp/whlx/sageattention/*sm80*.so >/dev/null 2>&1 \
       || { echo "FATAL: _qattn_sm80 extension absent (RTX 3090 path)"; exit 1; }; \
     ls /tmp/whlx/sageattention/*sm89*.so >/dev/null 2>&1 \
-      || { echo "FATAL: _qattn_sm89 extension absent (RTX 4090 FP8 path)"; exit 1; }; \
+      || { echo "FATAL: _qattn_sm89 extension absent (RTX 4090/5090 FP8 path)"; exit 1; }; \
     cuobjdump --list-elf /tmp/whlx/sageattention/*sm80*.so | grep -q 'sm_86' \
       || { echo "FATAL: _qattn_sm80 carries no sm_86 SASS"; exit 1; }; \
     cuobjdump --list-elf /tmp/whlx/sageattention/*sm89*.so | grep -q 'sm_89' \
@@ -131,7 +131,7 @@ RUN set -eux; \
     cuobjdump --list-elf /tmp/whlx/sageattention/_fused*.so | grep -q 'sm_89' \
       || { echo "FATAL: _fused carries no sm_89 SASS"; exit 1; }; \
     rm -rf /tmp/whlx; \
-    echo "SASS verification PASSED: sm_86 + sm_89 present in the wheel"
+    echo "SASS verification PASSED: sm_86 + sm_89 + sm_120 present in the wheel"
 
 # ===========================================================================
 # STAGE 2 - Runtime Stage: Clean image with prebuilt SageAttention wheel

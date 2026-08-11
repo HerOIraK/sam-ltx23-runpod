@@ -2,91 +2,74 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "Dockerfile"
-      - "start.sh"
-      - "verify-sage.py"
-      - "download-models.sh"
-      - "download-ltx-models.sh"
-      - "download-scail2-models.sh"
-      - "filter-req.py"
-      - "pin-comfyui.sh"
-      - "config/**"
-      - "workflows/**"
-      - ".github/workflows/build.yml"
+    branches:
+      - main
   workflow_dispatch:
 
-concurrency:
-  group: docker-build-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
-  IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/sam-ltx23-comfyui
+  IMAGE: mkv420/sam-ltx23-comfyui
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
 
     steps:
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h /
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
         with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: false
+          driver-opts: |
+            image=moby/buildkit:v0.12.5
 
-      - name: Disk before
-        run: df -h /
-
-      - uses: actions/checkout@v5
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile
           push: true
-          provenance: false
+          # -----------------------------------------------------------------
+          # Build matrix:
+          #   - :cuda13-v2   CUDA 13 release tag
+          #   - :h3-cu130-v2 MiniMax H3 release tag
+          #   - :latest      Floating latest tag
+          #   - :<sha>       Immutable per-commit tag
+          # -----------------------------------------------------------------
           tags: |
             ${{ env.IMAGE }}:cuda13-v2
             ${{ env.IMAGE }}:h3-cu130-v2
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
           # TORCH_CUDA_ARCH_LIST MUST be ';' separated.
-          # SageAttention's setup.py splits on ';' and ',' only -- a space
-          # separated "8.6 8.9" is parsed as a single capability, matches
-          # startswith("8.6"), sets HAS_SM86 only, and silently skips the
-          # _qattn_sm89 extension that the RTX 4090 needs.
+          # Supports RTX 3090 (8.6), RTX 4090 (8.9), and RTX 5090 (12.0).
           build-args: |
-            TORCH_CUDA_ARCH_LIST=8.6;8.9
+            TORCH_CUDA_ARCH_LIST=8.6;8.9;12.0
             MAX_JOBS=2
             EXT_PARALLEL=2
             NVCC_THREADS=2
             SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
             COMFYUI_MIN_VERSION=0.31.0
             COMFYUI_REF=v0.31.1
-          # Registry cache: the sagebuilder stage is keyed on SAGE_REF and the
-          # arch list, so the ~6 min CUDA compile is reused across runs and
-          # only re-executes when one of those actually changes.
-          #
-          # On the first run -- and after ANY failed run -- you will see:
-          #   ERROR: failed to configure registry cache importer:
-          #          .../sam-ltx23-comfyui:buildcache: not found
-          # That is expected and non-fatal. buildx only exports the cache tag
-          # when a build SUCCEEDS, so it cannot exist yet. It stops appearing
-          # after the first green run. Do not chase it.
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
 
