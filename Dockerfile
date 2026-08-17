@@ -1,41 +1,11 @@
-ARG BASE=runpod/comfyui:cuda13.0
-
 # ===========================================================================
-# STAGE 1 - Builder Stage: Compile SageAttention wheel and discard toolchain
+# Stage 1: compile SageAttention against CUDA 13 + PyTorch 2.10
 # ===========================================================================
-FROM ${BASE} AS sagebuilder
+FROM runpod/pytorch:2.10.0-py3.12-cuda13.0.0-devel-ubuntu24.04 AS sage-builder
 
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+SHELL ["/bin/bash", "-c"]
 
-ARG CUDA_PKG=13-0
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        git git-lfs ca-certificates build-essential ninja-build \
-        cuda-nvcc-${CUDA_PKG} \
-        cuda-cudart-dev-${CUDA_PKG} \
-        cuda-profiler-api-${CUDA_PKG} \
-        libcusparse-dev-${CUDA_PKG} \
-        libcublas-dev-${CUDA_PKG} \
-        libcusolver-dev-${CUDA_PKG} \
-        cuda-cuobjdump-${CUDA_PKG} \
-    && rm -rf /var/lib/apt/lists/*
-
-ENV CUDA_HOME=/usr/local/cuda
-ENV PATH=${CUDA_HOME}/bin:${PATH}
-ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
-ENV CPATH=/usr/local/cuda/include
-ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include
-
-# Tightened cusparse.h check
-RUN set -eux; \
-    nvcc --version; \
-    echo "CUDA_HOME=${CUDA_HOME}"; \
-    readlink -f "${CUDA_HOME}" || true; \
-    test -f "${CUDA_HOME}/include/cusparse.h" \
-      || { echo "FATAL: cusparse.h missing from ${CUDA_HOME}/include"; \
-           echo "other copies found:"; find /usr -name cusparse.h 2>/dev/null; exit 1; }; \
-    echo "cusparse.h present in ${CUDA_HOME}/include"
+WORKDIR /tmp/sage-build
 
 # MUST be ';' separated. Supports RTX 3090 (8.6), RTX 4090 (8.9), and RTX 5090 (12.0).
 ARG TORCH_CUDA_ARCH_LIST="8.6;8.9;12.0"
@@ -59,111 +29,121 @@ RUN set -eux; \
 
 # Preflight with SageAttention's OWN parser.
 RUN python3 - <<'PY'
-import pathlib, sys
-
-env = pathlib.Path("/etc/sage-arch").read_text().strip()
-SUPPORTED = {"8.0", "8.6", "8.9", "9.0", "10.0", "12.0", "12.1"}
-
-caps = set()
-for item in env.replace(",", ";").split(";"):
-    it = item.strip().lower().replace("sm_", "").replace("compute_", "").replace("a", "")
-    if not it:
-        continue
-    if it.endswith("+ptx"):
-        caps.add(it[:-4] + "+PTX")
-    else:
-        caps.add(f"{it[0]}.{it[1]}" if len(it) == 2 and it.isdigit() else it)
-
-print("TORCH_CUDA_ARCH_LIST:", repr(env))
-print("parsed capabilities :", sorted(caps))
-
-bad = [c for c in caps if c.replace("+PTX", "") not in SUPPORTED]
-if bad:
-    sys.exit(f"FATAL: unparseable capability {bad}. Separator must be ';', e.g. '8.6;8.9;12.0'.")
-
-has = {a: any(c.startswith(a) for c in caps) for a in ("8.0", "8.6", "8.9", "9.0", "12.0")}
-print("HAS_SMxx            :", has)
-
-sm80 = any(has.values())
-sm89 = has["8.9"] or has["9.0"] or has["12.0"]
-print("will build          :",
-      [n for n, on in (("_qattn_sm80", sm80), ("_qattn_sm89", sm89), ("_fused", True)) if on])
-
-if not sm80:
-    sys.exit("FATAL: _qattn_sm80 would not be built -> RTX 3090 unsupported")
-if not sm89:
-    sys.exit(f"FATAL: _qattn_sm89 would not be built -> RTX 4090/5090 FP8 unsupported "
-             f"(arch list {env!r} never yielded 8.9 or 12.0)")
-print("arch preflight PASSED")
+import os, sys
+raw = open("/etc/sage-arch").read().strip()
+os.environ["TORCH_CUDA_ARCH_LIST"] = raw
+try:
+    from torch.utils.cpp_extension import _get_cuda_arch_flags
+    flags = _get_cuda_arch_flags()
+    print("torch.utils.cpp_extension parsed arch flags:", flags)
+    assert flags, "arch flags evaluated to empty list"
+except Exception as e:
+    sys.exit(f"FATAL: TORCH_CUDA_ARCH_LIST={raw!r} failed torch preflight: {e}")
 PY
 
-RUN set -eux; \
-    export TORCH_CUDA_ARCH_LIST="$(cat /etc/sage-arch)"; \
-    export MAX_JOBS="${MAX_JOBS}"; \
-    export EXT_PARALLEL="${EXT_PARALLEL}"; \
-    export NVCC_APPEND_FLAGS="--threads ${NVCC_THREADS}"; \
-    echo "Building SageAttention: arch=${TORCH_CUDA_ARCH_LIST} ext_parallel=${EXT_PARALLEL} ref=${SAGE_REF}"; \
-    mkdir -p /opt/wheels; \
-    pip wheel --no-cache-dir --no-build-isolation --no-deps -w /opt/wheels \
-        "git+${SAGE_REPO}@${SAGE_REF}"; \
-    ls -la /opt/wheels; \
-    test -n "$(ls /opt/wheels/sageattention-*.whl 2>/dev/null)"
-
-# Ground truth SASS verification
-RUN set -eux; \
-    rm -rf /tmp/whlx; mkdir -p /tmp/whlx; \
-    python3 -m zipfile -e /opt/wheels/sageattention-*.whl /tmp/whlx; \
-    ls -la /tmp/whlx/sageattention/*.so; \
-    for so in /tmp/whlx/sageattention/*.so; do \
-        echo "== $(basename "$so")"; \
-        cuobjdump --list-elf "$so" | grep -oE 'sm_[0-9]+' | sort -u | sed 's/^/     /'; \
-    done; \
-    ls /tmp/whlx/sageattention/*sm80*.so >/dev/null 2>&1 \
-      || { echo "FATAL: _qattn_sm80 extension absent (RTX 3090 path)"; exit 1; }; \
-    ls /tmp/whlx/sageattention/*sm89*.so >/dev/null 2>&1 \
-      || { echo "FATAL: _qattn_sm89 extension absent (RTX 4090/5090 FP8 path)"; exit 1; }; \
-    cuobjdump --list-elf /tmp/whlx/sageattention/*sm80*.so | grep -q 'sm_86' \
-      || { echo "FATAL: _qattn_sm80 carries no sm_86 SASS"; exit 1; }; \
-    cuobjdump --list-elf /tmp/whlx/sageattention/*sm89*.so | grep -q 'sm_89' \
-      || { echo "FATAL: _qattn_sm89 carries no sm_89 SASS"; exit 1; }; \
-    cuobjdump --list-elf /tmp/whlx/sageattention/_fused*.so | grep -q 'sm_86' \
-      || { echo "FATAL: _fused carries no sm_86 SASS"; exit 1; }; \
-    cuobjdump --list-elf /tmp/whlx/sageattention/_fused*.so | grep -q 'sm_89' \
-      || { echo "FATAL: _fused carries no sm_89 SASS"; exit 1; }; \
-    rm -rf /tmp/whlx; \
-    echo "SASS verification PASSED: sm_86 + sm_89 + sm_120 present in the wheel"
-
-# ===========================================================================
-# STAGE 2 - Runtime Stage: Clean image with prebuilt SageAttention wheel
-# ===========================================================================
-FROM ${BASE}
-
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git git-lfs curl wget aria2 ffmpeg ca-certificates \
+        git ca-certificates build-essential ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=sagebuilder /opt/wheels /opt/wheels
-RUN pip install --no-cache-dir /opt/wheels/sageattention-*.whl
+RUN pip install --no-cache-dir \
+        "setuptools>=68" "wheel" "torch==2.10.0+cu130" --extra-index-url https://download.pytorch.org/whl/cu130
 
+RUN git clone "${SAGE_REPO}" sageattention \
+    && cd sageattention \
+    && git checkout "${SAGE_REF}" \
+    && git status
+
+# Build wheel with arch list explicitly set
+RUN cd sageattention && \
+    ARCH="$(cat /etc/sage-arch)" && \
+    echo "Building SageAttention wheel with TORCH_CUDA_ARCH_LIST=[$ARCH] (MAX_JOBS=${MAX_JOBS}, EXT_PARALLEL=${EXT_PARALLEL}, NVCC_THREADS=${NVCC_THREADS})" && \
+    TORCH_CUDA_ARCH_LIST="$ARCH" \
+    MAX_JOBS="${MAX_JOBS}" \
+    EXT_PARALLEL="${EXT_PARALLEL}" \
+    NVCC_THREADS="${NVCC_THREADS}" \
+    python3 setup.py bdist_wheel --dist-dir /tmp/sage-dist
+
+RUN ls -la /tmp/sage-dist
+
+# Copy the shared verifier script into the builder and run it
 COPY verify-sage.py /usr/local/bin/verify-sage.py
-RUN chmod +x /usr/local/bin/verify-sage.py \
-    && python3 /usr/local/bin/verify-sage.py
+RUN chmod +x /usr/local/bin/verify-sage.py
 
-ENV TRITON_CACHE_DIR=/workspace/.cache/triton
-ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.cache/inductor
+# Smoke test the built wheel inside the builder itself
+RUN pip install --no-cache-dir /tmp/sage-dist/*.whl
+RUN python3 /usr/local/bin/verify-sage.py
+
+# ===========================================================================
+# Stage 2: Final ComfyUI Application Image
+# ===========================================================================
+FROM runpod/pytorch:2.10.0-py3.12-cuda13.0.0-devel-ubuntu24.04
+
+SHELL ["/bin/bash", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    HF_HUB_ENABLE_HF_TRANSFER=1 \
+    PATH="/usr/local/cuda/bin:${PATH}" \
+    LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git \
+        git-lfs \
+        curl \
+        wget \
+        ffmpeg \
+        libgl1 \
+        libglib2.0-0 \
+        libgomp1 \
+        build-essential \
+        ninja-build \
+        jq \
+        ca-certificates \
+        rsync \
+        procps \
+        unzip \
+        nano \
+        aria2 \
+    && git lfs install \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fix libcuda.so stub symlink so build-time steps find it
+RUN if [ -f /usr/local/cuda/lib64/stubs/libcuda.so ] && [ ! -f /usr/local/cuda/lib64/libcuda.so ]; then \
+        ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/libcuda.so; \
+    fi
+
+# Copy the compiled SageAttention wheel from Stage 1 and install it
+COPY --from=sage-builder /tmp/sage-dist /tmp/sage-dist
+COPY --from=sage-builder /etc/sage-arch /etc/sage-arch
+COPY verify-sage.py /usr/local/bin/verify-sage.py
+RUN chmod +x /usr/local/bin/verify-sage.py
+
+RUN set -eux; \
+    WHEEL="$(ls -1 /tmp/sage-dist/sageattention-*.whl 2>/dev/null | head -n 1)"; \
+    test -n "$WHEEL" || { echo "FATAL: no wheel copied from sage-builder"; exit 1; }; \
+    pip install --no-cache-dir "$WHEEL"; \
+    rm -rf /tmp/sage-dist
+
+# Verify installation immediately using the shared verifier
+RUN python3 /usr/local/bin/verify-sage.py
+
+# Install specific triton version for compatibility
+RUN pip install --no-cache-dir "triton==3.6.0"
+
+# Preserve base image's ComfyUI installation if present
+RUN if [ -d /opt/ComfyUI ]; then \
+        mv /opt/ComfyUI /opt/comfyui-baked; \
+    else \
+        mkdir -p /opt/comfyui-baked && \
+        git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git /opt/comfyui-baked; \
+    fi
 
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Patch 4a (v3): Pin ComfyUI explicitly to v0.31.1
-ARG COMFYUI_MIN_VERSION=0.31.0
-ARG COMFYUI_REF=v0.31.1
+# Pin ComfyUI explicitly to latest v0.33.1
+ARG COMFYUI_MIN_VERSION=0.33.0
+ARG COMFYUI_REF=v0.33.1
 
 COPY filter-req.py /usr/local/bin/filter-req.py
 COPY pin-comfyui.sh /usr/local/bin/pin-comfyui.sh
@@ -183,13 +163,13 @@ RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
-# Cleanup list (added ComfyUI-SolAttn_triton)
-RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma ComfyUI-JITBlockSwap comfyui-h3-mlp-chunk ComfyUI-SolAttn_triton
+# Cleanup list (added ComfyUI-SolAttn_triton and ComfyUI-INT8-Fast)
+RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma ComfyUI-JITBlockSwap comfyui-h3-mlp-chunk ComfyUI-SolAttn_triton ComfyUI-INT8-Fast
 
 # Copy custom node: comfyui-h3-mlp-chunk
 COPY custom_nodes/comfyui-h3-mlp-chunk ./comfyui-h3-mlp-chunk
 
-# Clone required custom node packs (added ComfyUI-SolAttn_triton)
+# Clone required custom node packs
 RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git && \
     git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
@@ -214,7 +194,8 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/pixaroma/ComfyUI-Pixaroma.git && \
     git clone https://github.com/lovemachine100/ComfyUI-JITBlockSwap.git && \
     git -C ComfyUI-JITBlockSwap checkout 3b56b2d3514d730c8bec8354d6e9a6ca35c60fdf && \
-    git clone --depth 1 https://github.com/kijai/ComfyUI-SolAttn_triton.git
+    git clone --depth 1 https://github.com/kijai/ComfyUI-SolAttn_triton.git && \
+    git clone --depth 1 https://github.com/BobJohnson24/ComfyUI-INT8-Fast.git
 
 # Robust LTXVideo import patch
 RUN python3 - <<'PY'
