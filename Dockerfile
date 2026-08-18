@@ -112,9 +112,6 @@ RUN if [ -f /usr/local/cuda/lib64/stubs/libcuda.so ] && [ ! -f /usr/local/cuda/l
         ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/libcuda.so; \
     fi
 
-# Configure system-wide pip extra index URLs
-RUN mkdir -p /etc && printf "[global]\nextra-index-url = https://download.pytorch.org/whl/cu130 https://pypi.nvidia.com\n" > /etc/pip.conf
-
 # Copy the compiled SageAttention wheel from Stage 1 and install it
 COPY --from=sage-builder /tmp/sage-dist /tmp/sage-dist
 COPY --from=sage-builder /etc/sage-arch /etc/sage-arch
@@ -133,12 +130,21 @@ RUN python3 /usr/local/bin/verify-sage.py
 # Install specific triton version for compatibility
 RUN pip install --no-cache-dir "triton==3.6.0"
 
-# Install nvidia-vfx for RTX Video Super Resolution
-RUN pip install --no-cache-dir nvidia-vfx || true
+# Copy make-pip-constraints script
+COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
+RUN chmod +x /usr/local/bin/make-pip-constraints.py \
+ && python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
 
-# Clone ComfyUI v0.33.1 directly into /opt/ComfyUI
-RUN mkdir -p /opt && \
-    git clone --depth 1 --branch v0.33.1 https://github.com/Comfy-Org/ComfyUI.git /opt/ComfyUI
+# Preserve base image's ComfyUI installation if present
+RUN if [ -d /opt/ComfyUI ]; then \
+        mv /opt/ComfyUI /opt/comfyui-baked; \
+    else \
+        mkdir -p /opt/comfyui-baked && \
+        git clone https://github.com/Comfy-Org/ComfyUI.git /opt/comfyui-baked; \
+    fi
+
+# Copy baked ComfyUI to /opt/ComfyUI
+RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
 # Pin ComfyUI explicitly to latest v0.33.1
 ARG COMFYUI_MIN_VERSION=0.33.0
@@ -158,7 +164,7 @@ RUN pip install --no-cache-dir --upgrade "huggingface_hub[cli]" hf_transfer
 # Install ComfyUI-Manager dependencies directly from tree if present
 RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
     && python3 /usr/local/bin/filter-req.py manager_requirements.txt /tmp/mgr.txt \
-    && pip install --no-cache-dir -r /tmp/mgr.txt || true
+    && pip install --no-cache-dir -c /etc/pip-constraints.txt --extra-index-url https://download.pytorch.org/whl/cu130 -r /tmp/mgr.txt || true
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
@@ -223,8 +229,7 @@ RUN set -eux; \
         [ -f "$req" ] || continue; \
         echo "--- $(basename "$dir") ---"; \
         python3 /usr/local/bin/filter-req.py "$req" /tmp/req.filtered; \
-        pip install --no-cache-dir --no-deps -r /tmp/req.filtered || true; \
-        pip install --no-cache-dir -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
+        pip install --no-cache-dir -c /etc/pip-constraints.txt --extra-index-url https://download.pytorch.org/whl/cu130 -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \
     pip install --no-cache-dir onnxruntime; \
@@ -256,9 +261,7 @@ RUN chmod +x /start.sh /download-models.sh /download-ltx-models.sh /download-sca
 # Final gate: re-run the shared verifier
 RUN python3 /usr/local/bin/verify-sage.py
 
-# Generate pip constraints file to lock ABI-critical packages
-COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
-RUN python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
+# Export PIP_CONSTRAINT env
 ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
 
 # Record build manifest using standalone build-manifest.sh script

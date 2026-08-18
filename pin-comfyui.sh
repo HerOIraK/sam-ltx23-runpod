@@ -55,7 +55,7 @@ if [ -f requirements.txt ]; then
     python3 /usr/local/bin/filter-req.py requirements.txt /tmp/comfy-req.filtered
     # Install dependencies with --no-deps first, then full pass without changing torch
     pip install --no-cache-dir --no-deps -r /tmp/comfy-req.filtered || true
-    pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu130 -r /tmp/comfy-req.filtered || true
+    pip install --no-cache-dir -c /etc/pip-constraints.txt --extra-index-url https://download.pytorch.org/whl/cu130 -r /tmp/comfy-req.filtered || true
     TORCH_AFTER="$(python3 -c 'import torch; print(torch.__version__)')"
     echo "torch: ${TORCH_BEFORE} -> ${TORCH_AFTER}"
     if [ "$TORCH_BEFORE" != "$TORCH_AFTER" ]; then
