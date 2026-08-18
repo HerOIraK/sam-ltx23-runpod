@@ -131,7 +131,7 @@ RUN python3 /usr/local/bin/verify-sage.py
 RUN pip install --no-cache-dir "triton==3.6.0"
 
 # Install ComfyUI v0.33.1 core requirements safely
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --no-deps \
         "transformers>=4.50.3" \
         "tokenizers>=0.13.3" \
         "comfyui-frontend-package==1.48.7" \
@@ -140,8 +140,7 @@ RUN pip install --no-cache-dir \
         "comfy-kitchen==0.2.31" \
         "comfy-aimdo==0.4.13" \
         "kornia>=0.7.1" \
-        "spandrel" \
-        --extra-index-url https://download.pytorch.org/whl/cu130
+        "spandrel"
 
 # Preserve base image's ComfyUI installation if present
 RUN if [ -d /opt/ComfyUI ]; then \
