@@ -199,6 +199,7 @@ RUN set -eux; \
         [ -f "$req" ] || continue; \
         echo "--- $(basename "$dir") ---"; \
         python3 /usr/local/bin/filter-req.py "$req" /tmp/req.filtered; \
+        pip install --no-cache-dir --no-deps -r /tmp/req.filtered || true; \
         pip install --no-cache-dir -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \

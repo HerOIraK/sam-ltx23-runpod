@@ -109,7 +109,7 @@ if [ -f requirements.txt ]; then
     echo "realigning helper packages to this revision's pins..."
     TORCH_BEFORE="$(python3 -c 'import torch; print(torch.__version__)')"
     python3 /usr/local/bin/filter-req.py requirements.txt /tmp/comfy-req.filtered
-    pip install --no-cache-dir -r /tmp/comfy-req.filtered || echo "WARN: non-fatal"
+    pip install --no-cache-dir --no-deps -r /tmp/comfy-req.filtered || true
     TORCH_AFTER="$(python3 -c 'import torch; print(torch.__version__)')"
     if [ "$TORCH_BEFORE" != "$TORCH_AFTER" ]; then
         echo "FATAL: ComfyUI requirements.txt moved torch ${TORCH_BEFORE} -> ${TORCH_AFTER}"
