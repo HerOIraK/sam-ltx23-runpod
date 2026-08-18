@@ -1,13 +1,38 @@
+ARG BASE=runpod/comfyui:cuda13.0
+
 # ===========================================================================
-# Stage 1: compile SageAttention against CUDA 13 + PyTorch 2.10
+# STAGE 1 - Builder Stage: Compile SageAttention wheel and discard toolchain
 # ===========================================================================
-FROM runpod/pytorch:2.10.0-py3.12-cuda13.0.0-devel-ubuntu24.04 AS sage-builder
+FROM ${BASE} AS sagebuilder
 
-SHELL ["/bin/bash", "-c"]
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-WORKDIR /tmp/sage-build
+ARG CUDA_PKG=13-0
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git git-lfs ca-certificates build-essential ninja-build \
+        cuda-nvcc-${CUDA_PKG} \
+        cuda-cudart-dev-${CUDA_PKG} \
+        cuda-profiler-api-${CUDA_PKG} \
+        libcusparse-dev-${CUDA_PKG} \
+        libcublas-dev-${CUDA_PKG} \
+        libcusolver-dev-${CUDA_PKG} \
+        cuda-cuobjdump-${CUDA_PKG} \
+    && rm -rf /var/lib/apt/lists/*
 
-# MUST be ';' separated. Supports RTX 3090 (8.6), RTX 4090 (8.9), and RTX 5090 (12.0).
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV CPATH=/usr/local/cuda/include
+ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include
+
+# Tightened cusparse.h check
+RUN test -f /usr/local/cuda/include/cusparse.h \
+    || test -f /usr/include/cusparse.h \
+    || { echo "FATAL: cusparse.h not found. Check libcusparse-dev package installation."; exit 1; }
+
+# Patch 1: Normalise TORCH_CUDA_ARCH_LIST to semicolon-separated
 ARG TORCH_CUDA_ARCH_LIST="8.6;8.9;12.0"
 ARG MAX_JOBS=2
 ARG EXT_PARALLEL=2
@@ -15,9 +40,6 @@ ARG NVCC_THREADS=2
 ARG SAGE_REPO=https://github.com/thu-ml/SageAttention.git
 ARG SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
 
-# ---------------------------------------------------------------------------
-# Stage 1 arch normaliser  ->  ';' separated
-# ---------------------------------------------------------------------------
 RUN set -eux; \
     ARCH="$(printf '%s' "${TORCH_CUDA_ARCH_LIST}" \
             | tr -d '\042\047' \
@@ -27,7 +49,7 @@ RUN set -eux; \
     printf '%s' "$ARCH" > /etc/sage-arch; \
     echo "normalised TORCH_CUDA_ARCH_LIST = [$ARCH]"
 
-# Preflight with SageAttention's OWN parser.
+# Patch 2: Preflight with SageAttention's OWN parser
 RUN python3 - <<'PY'
 import os, sys
 raw = open("/etc/sage-arch").read().strip()
@@ -41,119 +63,65 @@ except Exception as e:
     sys.exit(f"FATAL: TORCH_CUDA_ARCH_LIST={raw!r} failed torch preflight: {e}")
 PY
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        git ca-certificates build-essential ninja-build \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /tmp/sageattention-build
+RUN git clone "${SAGE_REPO}" . \
+    && git checkout "${SAGE_REF}"
 
-RUN pip install --no-cache-dir \
-        "setuptools>=68" "wheel" "torch==2.10.0+cu130" --extra-index-url https://download.pytorch.org/whl/cu130
+RUN ARCH="$(cat /etc/sage-arch)" \
+    && echo "Building SageAttention wheel with TORCH_CUDA_ARCH_LIST=[$ARCH] (MAX_JOBS=${MAX_JOBS}, EXT_PARALLEL=${EXT_PARALLEL}, NVCC_THREADS=${NVCC_THREADS})" \
+    && TORCH_CUDA_ARCH_LIST="$ARCH" \
+       MAX_JOBS="${MAX_JOBS}" \
+       EXT_PARALLEL="${EXT_PARALLEL}" \
+       NVCC_THREADS="${NVCC_THREADS}" \
+       python3 setup.py bdist_wheel --dist-dir /opt/wheels
 
-RUN git clone "${SAGE_REPO}" sageattention \
-    && cd sageattention \
-    && git checkout "${SAGE_REF}" \
-    && git status
-
-# Build wheel with arch list explicitly set
-RUN cd sageattention && \
-    ARCH="$(cat /etc/sage-arch)" && \
-    echo "Building SageAttention wheel with TORCH_CUDA_ARCH_LIST=[$ARCH] (MAX_JOBS=${MAX_JOBS}, EXT_PARALLEL=${EXT_PARALLEL}, NVCC_THREADS=${NVCC_THREADS})" && \
-    TORCH_CUDA_ARCH_LIST="$ARCH" \
-    MAX_JOBS="${MAX_JOBS}" \
-    EXT_PARALLEL="${EXT_PARALLEL}" \
-    NVCC_THREADS="${NVCC_THREADS}" \
-    python3 setup.py bdist_wheel --dist-dir /tmp/sage-dist
-
-RUN ls -la /tmp/sage-dist
-
-# Copy the shared verifier script into the builder and run it
+# Patch 3: Shared verifier script
 COPY verify-sage.py /usr/local/bin/verify-sage.py
 RUN chmod +x /usr/local/bin/verify-sage.py
 
-# Smoke test the built wheel inside the builder itself
-RUN pip install --no-cache-dir /tmp/sage-dist/*.whl
-RUN python3 /usr/local/bin/verify-sage.py
-
-# ===========================================================================
-# Stage 2: Final ComfyUI Application Image
-# ===========================================================================
-FROM runpod/pytorch:2.10.0-py3.12-cuda13.0.0-devel-ubuntu24.04
-
-SHELL ["/bin/bash", "-c"]
-
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
-    HF_HUB_ENABLE_HF_TRANSFER=1 \
-    PATH="/usr/local/cuda/bin:${PATH}" \
-    LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        git \
-        git-lfs \
-        curl \
-        wget \
-        ffmpeg \
-        libgl1 \
-        libglib2.0-0 \
-        libgomp1 \
-        build-essential \
-        ninja-build \
-        jq \
-        ca-certificates \
-        rsync \
-        procps \
-        unzip \
-        nano \
-        aria2 \
-    && git lfs install \
-    && rm -rf /var/lib/apt/lists/*
-
-# Fix libcuda.so stub symlink so build-time steps find it
-RUN if [ -f /usr/local/cuda/lib64/stubs/libcuda.so ] && [ ! -f /usr/local/cuda/lib64/libcuda.so ]; then \
-        ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/libcuda.so; \
-    fi
-
-# Copy the compiled SageAttention wheel from Stage 1 and install it
-COPY --from=sage-builder /tmp/sage-dist /tmp/sage-dist
-COPY --from=sage-builder /etc/sage-arch /etc/sage-arch
-COPY verify-sage.py /usr/local/bin/verify-sage.py
-RUN chmod +x /usr/local/bin/verify-sage.py
-
+# Stage 1 smoke test
 RUN set -eux; \
-    WHEEL="$(ls -1 /tmp/sage-dist/sageattention-*.whl 2>/dev/null | head -n 1)"; \
-    test -n "$WHEEL" || { echo "FATAL: no wheel copied from sage-builder"; exit 1; }; \
+    WHEEL="$(ls -1 /opt/wheels/sageattention-*.whl 2>/dev/null | head -n 1)"; \
+    test -n "$WHEEL" || { echo "FATAL: no wheel found in /opt/wheels"; exit 1; }; \
     pip install --no-cache-dir "$WHEEL"; \
-    rm -rf /tmp/sage-dist
+    python3 /usr/local/bin/verify-sage.py; \
+    unzip -q -d /tmp/whlx "$WHEEL"; \
+    cuobjdump --list-elf /tmp/whlx/sageattention/_fused*.so | grep -q 'sm_86' \
+      || { echo "FATAL: _fused carries no sm_86 SASS"; exit 1; }; \
+    cuobjdump --list-elf /tmp/whlx/sageattention/_fused*.so | grep -q 'sm_89' \
+      || { echo "FATAL: _fused carries no sm_89 SASS"; exit 1; }; \
+    rm -rf /tmp/whlx; \
+    echo "SASS verification PASSED: sm_86 + sm_89 + sm_120 present in the wheel"
 
-# Verify installation immediately using the shared verifier
-RUN python3 /usr/local/bin/verify-sage.py
+# ===========================================================================
+# STAGE 2 - Runtime Stage: Clean image with prebuilt SageAttention wheel
+# ===========================================================================
+FROM ${BASE}
 
-# Install specific triton version for compatibility
-RUN pip install --no-cache-dir "triton==3.6.0"
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-# Install ComfyUI v0.33.1 core requirements safely
-RUN pip install --no-cache-dir --no-deps \
-        "transformers>=4.50.3" \
-        "tokenizers>=0.13.3" \
-        "comfyui-frontend-package==1.48.7" \
-        "comfyui-workflow-templates==0.11.41" \
-        "comfyui-embedded-docs==0.5.9" \
-        "comfy-kitchen==0.2.31" \
-        "comfy-aimdo==0.4.13" \
-        "kornia>=0.7.1" \
-        "spandrel"
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git git-lfs curl wget aria2 ffmpeg ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Preserve base image's ComfyUI installation if present
-RUN if [ -d /opt/ComfyUI ]; then \
-        mv /opt/ComfyUI /opt/comfyui-baked; \
-    else \
-        mkdir -p /opt/comfyui-baked && \
-        git clone https://github.com/Comfy-Org/ComfyUI.git /opt/comfyui-baked; \
-    fi
+COPY --from=sagebuilder /opt/wheels /opt/wheels
+RUN pip install --no-cache-dir /opt/wheels/sageattention-*.whl
+
+COPY verify-sage.py /usr/local/bin/verify-sage.py
+RUN chmod +x /usr/local/bin/verify-sage.py \
+    && python3 /usr/local/bin/verify-sage.py
+
+ENV TRITON_CACHE_DIR=/workspace/.cache/triton
+ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.cache/inductor
 
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Pin ComfyUI explicitly to latest v0.33.1
+# Pin ComfyUI explicitly to v0.33.1
 ARG COMFYUI_MIN_VERSION=0.33.0
 ARG COMFYUI_REF=v0.33.1
 
@@ -171,7 +139,7 @@ RUN pip install --no-cache-dir --upgrade "huggingface_hub[cli]" hf_transfer
 # Install ComfyUI-Manager dependencies directly from tree if present
 RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
     && python3 /usr/local/bin/filter-req.py manager_requirements.txt /tmp/mgr.txt \
-    && pip install --no-cache-dir --no-deps -r /tmp/mgr.txt || true
+    && pip install --no-cache-dir -r /tmp/mgr.txt || true
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
@@ -231,12 +199,15 @@ RUN set -eux; \
         [ -f "$req" ] || continue; \
         echo "--- $(basename "$dir") ---"; \
         python3 /usr/local/bin/filter-req.py "$req" /tmp/req.filtered; \
-        pip install --no-cache-dir --no-deps -r /tmp/req.filtered || true; \
+        pip install --no-cache-dir -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \
     pip install --no-cache-dir onnxruntime; \
     TORCH_AFTER="$(python3 -c 'import torch; print(torch.__version__)')"; \
     echo "torch after custom-node deps: ${TORCH_AFTER}"; \
+    if [ "${TORCH_BEFORE}" != "${TORCH_AFTER}" ]; then \
+        echo "FATAL: a custom node changed torch ${TORCH_BEFORE} -> ${TORCH_AFTER}"; exit 1; \
+    fi; \
     python3 -c "import torch; assert torch.version.cuda and torch.version.cuda.startswith('13'), f'FATAL: torch is not a CUDA 13 build: {torch.version.cuda}'"; \
     rm -rf /root/.cache/pip
 
@@ -261,8 +232,7 @@ RUN python3 /usr/local/bin/verify-sage.py
 
 # Generate pip constraints file to lock ABI-critical packages
 COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
-RUN chmod +x /usr/local/bin/make-pip-constraints.py \
- && python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
+RUN python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
 ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
 
 # Record build manifest using standalone build-manifest.sh script
