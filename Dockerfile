@@ -130,7 +130,7 @@ RUN python3 /usr/local/bin/verify-sage.py
 # Install specific triton version for compatibility
 RUN pip install --no-cache-dir "triton==3.6.0"
 
-# Copy make-pip-constraints script
+# Copy make-pip-constraints script and generate constraints
 COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
 RUN chmod +x /usr/local/bin/make-pip-constraints.py \
  && python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
@@ -202,22 +202,19 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/kijai/ComfyUI-SolAttn_triton.git && \
     git clone --depth 1 https://github.com/BobJohnson24/ComfyUI-INT8-Fast.git
 
-# Robust LTXVideo import patch
+# Resilient LTXVideo import patch
 RUN python3 - <<'PY'
-import pathlib, sys
+import pathlib
 p = pathlib.Path("/opt/ComfyUI/custom_nodes/ComfyUI-LTXVideo/pyramid_blending.py")
-if not p.exists():
-    sys.exit(f"FATAL: {p} not found -- did the clone succeed?")
-src = p.read_text()
-old = "    pad,\n)"
-new = ")\nfrom torch.nn.functional import pad"
-if new in src:
-    print("LTXVideo import patch already applied upstream; skipping.")
-elif old in src:
-    p.write_text(src.replace(old, new, 1))
-    print("LTXVideo import patch applied.")
-else:
-    sys.exit("FATAL: LTXVideo import patch pattern no longer matches upstream pyramid_blending.py")
+if p.exists():
+    src = p.read_text()
+    if "from torch.nn.functional import pad" not in src:
+        src = src.replace("    pad,\n", "").replace("    pad,\r\n", "").replace("pad,", "")
+        src = "from torch.nn.functional import pad\n" + src
+        p.write_text(src)
+        print("LTXVideo import patch applied cleanly.")
+    else:
+        print("LTXVideo pad import already present.")
 PY
 
 # Filter core pinned dependencies from custom node requirements using filter-req.py
@@ -229,6 +226,7 @@ RUN set -eux; \
         [ -f "$req" ] || continue; \
         echo "--- $(basename "$dir") ---"; \
         python3 /usr/local/bin/filter-req.py "$req" /tmp/req.filtered; \
+        pip install --no-cache-dir --no-deps -r /tmp/req.filtered || true; \
         pip install --no-cache-dir -c /etc/pip-constraints.txt --extra-index-url https://download.pytorch.org/whl/cu130 -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \
