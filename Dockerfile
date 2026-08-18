@@ -144,7 +144,7 @@ RUN if [ -d /opt/ComfyUI ]; then \
         mv /opt/ComfyUI /opt/comfyui-baked; \
     else \
         mkdir -p /opt/comfyui-baked && \
-        git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git /opt/comfyui-baked; \
+        git clone --depth 1 --branch v0.33.1 https://github.com/Comfy-Org/ComfyUI.git /opt/comfyui-baked; \
     fi
 
 # Copy baked ComfyUI to /opt/ComfyUI
