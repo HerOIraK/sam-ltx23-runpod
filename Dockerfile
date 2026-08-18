@@ -55,29 +55,30 @@ import os, sys
 env = open("/etc/sage-arch").read().strip()
 os.environ["TORCH_CUDA_ARCH_LIST"] = env
 
-try:
-    from torch.utils.cpp_extension import _get_cuda_arch_flags
-    flags = _get_cuda_arch_flags()
-except Exception as e:
-    sys.exit(f"FATAL: torch.utils.cpp_extension._get_cuda_arch_flags() crashed: {e}")
+compute_capabilities = set()
+for item in env.replace(",", ";").split(";"):
+    it = item.strip().lower().replace("sm_", "").replace("compute_", "").replace("a", "")
+    if it:
+        if len(it) == 2 and it.isdigit():
+            it = f"{it[0]}.{it[1]}"
+        compute_capabilities.add(it)
 
-print("torch arch flags     :", flags)
-caps = [f.split("compute_")[1].split(",")[0] for f in flags if "compute_" in f]
-print("extracted capabilities:", caps)
+print("parsed capabilities  :", compute_capabilities)
+HAS_SM80 = any(c.startswith("8.0") for c in compute_capabilities)
+HAS_SM86 = any(c.startswith("8.6") for c in compute_capabilities)
+HAS_SM89 = any(c.startswith("8.9") for c in compute_capabilities)
+HAS_SM90 = any(c.startswith("9.0") for c in compute_capabilities)
+HAS_SM120 = any(c.startswith("12.0") for c in compute_capabilities)
 
-has = {a: any(c.startswith(a) for c in caps) for a in ("8.0", "8.6", "8.9", "9.0", "12.0")}
-print("HAS_SMxx            :", has)
-
-sm80 = any(has.values())
-sm89 = has["8.9"] or has["9.0"] or has["12.0"]
-print("will build          :",
+sm80 = HAS_SM80 or HAS_SM86 or HAS_SM89 or HAS_SM90 or HAS_SM120
+sm89 = HAS_SM89 or HAS_SM90 or HAS_SM120
+print("will build           :",
       [n for n, on in (("_qattn_sm80", sm80), ("_qattn_sm89", sm89), ("_fused", True)) if on])
 
 if not sm80:
     sys.exit("FATAL: _qattn_sm80 would not be built -> RTX 3090 unsupported")
 if not sm89:
-    sys.exit(f"FATAL: _qattn_sm89 would not be built -> RTX 4090/5090 FP8 unsupported "
-             f"(arch list {env!r} never yielded 8.9 or 12.0)")
+    sys.exit(f"FATAL: _qattn_sm89 would not be built -> RTX 4090/5090 FP8 unsupported (arch list {env!r})")
 print("arch preflight PASSED")
 PY
 
