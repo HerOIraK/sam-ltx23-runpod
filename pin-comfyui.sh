@@ -83,19 +83,49 @@ fi
 # ------------------------------------------------------------- explicit pin
 echo "Explicit pin requested. Checking that '${PIN_REF}' exists on origin..."
 
-fetched=0
-DEPTH_ARG=""
-if [ -f .git/shallow ]; then
-    DEPTH_ARG="--depth 1"
+if git ls-remote --tags --refs origin 2>/dev/null | grep -q "refs/tags/${PIN_REF}\$"; then
+    echo "  found refs/tags/${PIN_REF}"
+elif git ls-remote --heads origin 2>/dev/null | grep -q "refs/heads/${PIN_REF}\$"; then
+    echo "  found refs/heads/${PIN_REF} (branch, not tag)"
+else
+    echo "  Attempting upstream fetch..."
 fi
 
-# Attempt fetches from origin or upstream Comfy-Org
+fetched=0
+
+if [ -f .git/shallow ]; then
+    DEPTH_ARG="--depth 1"
+    echo "repo is shallow      -> fetching with --depth 1"
+else
+    DEPTH_ARG=""
+    echo "repo is a full clone -> fetching without --depth (history preserved)"
+fi
+
+echo "attempt 1: explicit tag refspec"
 if git fetch ${DEPTH_ARG} origin "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}" 2>/dev/null; then
     fetched=1
-elif git fetch ${DEPTH_ARG} https://github.com/Comfy-Org/ComfyUI.git "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}" 2>/dev/null; then
-    fetched=1
-elif git fetch --tags --force origin 2>/dev/null; then
-    fetched=1
+fi
+
+if [ "$fetched" -eq 0 ]; then
+    echo "attempt 2: upstream remote fetch"
+    if git fetch ${DEPTH_ARG} https://github.com/Comfy-Org/ComfyUI.git "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}" 2>/dev/null; then
+        fetched=1
+    fi
+fi
+
+if [ "$fetched" -eq 0 ]; then
+    echo "attempt 3: full tag fetch"
+    if git fetch --tags --force origin 2>/dev/null; then
+        fetched=1
+    fi
+fi
+
+if [ "$fetched" -eq 0 ]; then
+    echo "attempt 4: unshallow, then full tag fetch"
+    git fetch --unshallow origin 2>/dev/null || true
+    if git fetch --tags --force origin 2>/dev/null; then
+        fetched=1
+    fi
 fi
 
 git checkout --detach "refs/tags/${PIN_REF}" 2>/dev/null \
