@@ -95,24 +95,41 @@ RUN set -eux; \
     test -n "$(ls /opt/wheels/sageattention-*.whl 2>/dev/null)"
 
 # Ground truth SASS verification
-RUN set -eux; \
-    rm -rf /tmp/whlx; mkdir -p /tmp/whlx; \
-    python3 -m zipfile -e /opt/wheels/sageattention-*.whl /tmp/whlx; \
-    ls -la /tmp/whlx/sageattention/*.so; \
-    for so in /tmp/whlx/sageattention/*.so; do \
-        echo "== $(basename "$so")"; \
-        cuobjdump --list-elf "$so" | grep -oE 'sm_[0-9]+' | sort -u | sed 's/^/     /'; \
-    done; \
-    ls /tmp/whlx/sageattention/*sm80*.so >/dev/null 2>&1 \
-      || { echo "FATAL: _qattn_sm80 extension absent (RTX 3090 path)"; exit 1; }; \
-    ls /tmp/whlx/sageattention/*sm89*.so >/dev/null 2>&1 \
-      || { echo "FATAL: _qattn_sm89 extension absent (RTX 4090/5090 FP8 path)"; exit 1; }; \
-    cuobjdump --list-elf /tmp/whlx/sageattention/*sm80*.so | grep -q 'sm_86' \
-      || { echo "FATAL: _qattn_sm80 carries no sm_86 SASS"; exit 1; }; \
-    cuobjdump --list-elf /tmp/whlx/sageattention/*sm89*.so | grep -q 'sm_89' \
-      || { echo "FATAL: _qattn_sm89 carries no sm_89 SASS"; exit 1; }; \
-    rm -rf /tmp/whlx; \
-    echo "SASS verification PASSED: sm_86 + sm_89 + sm_120 present in the wheel"
+RUN python3 - <<'PY'
+import glob, os, subprocess, sys, zipfile
+
+wheel = glob.glob("/opt/wheels/sageattention-*.whl")
+if not wheel:
+    sys.exit("FATAL: No SageAttention wheel found in /opt/wheels")
+
+extract_dir = "/tmp/whlx"
+os.makedirs(extract_dir, exist_ok=True)
+with zipfile.ZipFile(wheel[0], 'r') as z:
+    z.extractall(extract_dir)
+
+sos = glob.glob(f"{extract_dir}/sageattention/*.so")
+print("Compiled extensions:", [os.path.basename(s) for s in sos])
+
+has_sm80 = any("sm80" in s for s in sos)
+has_sm89 = any("sm89" in s for s in sos)
+
+if not has_sm80:
+    sys.exit("FATAL: _qattn_sm80 extension absent (RTX 3090 path)")
+if not has_sm89:
+    sys.exit("FATAL: _qattn_sm89 extension absent (RTX 4090/5090 FP8 path)")
+
+for so in sos:
+    out = subprocess.check_output(["cuobjdump", "--list-elf", so], text=True)
+    archs = sorted(set(x.strip() for x in out.split() if x.startswith("sm_")))
+    print(f"== {os.path.basename(so)}: {archs}")
+    if "sm80" in so and "sm_86" not in archs:
+        sys.exit(f"FATAL: {os.path.basename(so)} carries no sm_86 SASS")
+    if "sm89" in so and "sm_89" not in archs:
+        sys.exit(f"FATAL: {os.path.basename(so)} carries no sm_89 SASS")
+
+subprocess.run(["rm", "-rf", extract_dir])
+print("SASS verification PASSED: sm_86 + sm_89 + sm_120 present in the wheel")
+PY
 
 # ===========================================================================
 # STAGE 2 - Runtime Stage: Clean image with prebuilt SageAttention wheel
