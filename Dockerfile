@@ -130,10 +130,18 @@ RUN python3 /usr/local/bin/verify-sage.py
 # Install specific triton version for compatibility
 RUN pip install --no-cache-dir "triton==3.6.0"
 
-# Copy make-pip-constraints script and generate constraints
-COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
-RUN chmod +x /usr/local/bin/make-pip-constraints.py \
- && python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
+# Install ComfyUI v0.33.1 core requirements safely
+RUN pip install --no-cache-dir \
+        "transformers>=4.50.3" \
+        "tokenizers>=0.13.3" \
+        "comfyui-frontend-package==1.48.7" \
+        "comfyui-workflow-templates==0.11.41" \
+        "comfyui-embedded-docs==0.5.9" \
+        "comfy-kitchen==0.2.31" \
+        "comfy-aimdo==0.4.13" \
+        "kornia>=0.7.1" \
+        "spandrel" \
+        --extra-index-url https://download.pytorch.org/whl/cu130
 
 # Preserve base image's ComfyUI installation if present
 RUN if [ -d /opt/ComfyUI ]; then \
@@ -164,7 +172,7 @@ RUN pip install --no-cache-dir --upgrade "huggingface_hub[cli]" hf_transfer
 # Install ComfyUI-Manager dependencies directly from tree if present
 RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
     && python3 /usr/local/bin/filter-req.py manager_requirements.txt /tmp/mgr.txt \
-    && pip install --no-cache-dir -c /etc/pip-constraints.txt --extra-index-url https://download.pytorch.org/whl/cu130 -r /tmp/mgr.txt || true
+    && pip install --no-cache-dir --no-deps -r /tmp/mgr.txt || true
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
@@ -213,8 +221,6 @@ if p.exists():
         src = "from torch.nn.functional import pad\n" + src
         p.write_text(src)
         print("LTXVideo import patch applied cleanly.")
-    else:
-        print("LTXVideo pad import already present.")
 PY
 
 # Filter core pinned dependencies from custom node requirements using filter-req.py
@@ -226,8 +232,7 @@ RUN set -eux; \
         [ -f "$req" ] || continue; \
         echo "--- $(basename "$dir") ---"; \
         python3 /usr/local/bin/filter-req.py "$req" /tmp/req.filtered; \
-        pip install --no-cache-dir --no-deps -r /tmp/req.filtered || true; \
-        pip install --no-cache-dir -c /etc/pip-constraints.txt --extra-index-url https://download.pytorch.org/whl/cu130 -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
+        pip install --no-cache-dir --no-deps -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \
     pip install --no-cache-dir onnxruntime; \
@@ -259,7 +264,10 @@ RUN chmod +x /start.sh /download-models.sh /download-ltx-models.sh /download-sca
 # Final gate: re-run the shared verifier
 RUN python3 /usr/local/bin/verify-sage.py
 
-# Export PIP_CONSTRAINT env
+# Generate pip constraints file to lock ABI-critical packages
+COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
+RUN chmod +x /usr/local/bin/make-pip-constraints.py \
+ && python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
 ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
 
 # Record build manifest using standalone build-manifest.sh script

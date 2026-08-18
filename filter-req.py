@@ -3,19 +3,6 @@
 Strip core-runtime pins out of a requirements.txt before installing it.
 
 Usage:  filter-req.py <input.txt> <output.txt>
-
-Why this exists
----------------
-Third-party ComfyUI node packs routinely pin torch / numpy / opencv, and some
-ship an --extra-index-url pointing at a CUDA 12 wheel index. Installing those
-unfiltered replaces the CUDA 13 torch build, which silently breaks the
-SageAttention wheel compiled against it (ImportError: undefined symbol).
-
-A plain grep is not sufficient: it misses inline comments, extras markers,
-environment markers, and index-url directives. This handles all of them.
-
-Dropped lines are printed to stderr so the build log records exactly what was
-removed and from where.
 """
 import pathlib
 import re
@@ -38,12 +25,14 @@ BLOCKED = {
     "opencv-python-headless",
     "opencv-contrib-python",
     "opencv-contrib-python-headless",
+    "transformers",
+    "tokenizers",
+    "accelerate",
     "nvidia-cublas-cu12",
     "nvidia-cudnn-cu12",
 }
 
 # pip directives that can redirect installs to a different wheel index.
-# -r and -e are deliberately NOT blocked; they pull in legitimate deps.
 BLOCKED_DIRECTIVES = (
     "--index-url",
     "--extra-index-url",
@@ -65,15 +54,13 @@ def requirement_name(raw_line):
     if lowered.startswith(BLOCKED_DIRECTIVES):
         return "__DIRECTIVE__"
     if line.startswith("-"):
-        return None  # -r / -e / other flags we allow through
+        return None
 
-    # Drop inline comments, then any environment marker.
     line = line.split("#", 1)[0].strip()
     line = line.split(";", 1)[0].strip()
     if not line:
         return None
 
-    # A direct URL or VCS requirement: name is before '@' if present.
     if "@" in line and not line.startswith("@"):
         line = line.split("@", 1)[0].strip()
 
