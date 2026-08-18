@@ -96,7 +96,7 @@ RUN set -eux; \
 
 # Ground truth SASS verification
 RUN python3 - <<'PY'
-import glob, os, subprocess, sys, zipfile
+import glob, os, re, subprocess, sys, zipfile
 
 wheel = glob.glob("/opt/wheels/sageattention-*.whl")
 if not wheel:
@@ -120,7 +120,7 @@ if not has_sm89:
 
 for so in sos:
     out = subprocess.check_output(["cuobjdump", "--list-elf", so], text=True)
-    archs = sorted(set(x.strip() for x in out.split() if x.startswith("sm_")))
+    archs = sorted(set(re.findall(r"sm_\d+", out)))
     print(f"== {os.path.basename(so)}: {archs}")
     if "sm80" in so and "sm_86" not in archs:
         sys.exit(f"FATAL: {os.path.basename(so)} carries no sm_86 SASS")
