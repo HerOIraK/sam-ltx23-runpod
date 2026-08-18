@@ -112,6 +112,9 @@ RUN if [ -f /usr/local/cuda/lib64/stubs/libcuda.so ] && [ ! -f /usr/local/cuda/l
         ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/libcuda.so; \
     fi
 
+# Configure system-wide pip extra index URLs
+RUN mkdir -p /etc && printf "[global]\nextra-index-url = https://download.pytorch.org/whl/cu130 https://pypi.nvidia.com\n" > /etc/pip.conf
+
 # Copy the compiled SageAttention wheel from Stage 1 and install it
 COPY --from=sage-builder /tmp/sage-dist /tmp/sage-dist
 COPY --from=sage-builder /etc/sage-arch /etc/sage-arch
@@ -131,24 +134,11 @@ RUN python3 /usr/local/bin/verify-sage.py
 RUN pip install --no-cache-dir "triton==3.6.0"
 
 # Install nvidia-vfx for RTX Video Super Resolution
-RUN pip install --no-cache-dir nvidia-vfx --extra-index-url https://pypi.nvidia.com || true
+RUN pip install --no-cache-dir nvidia-vfx || true
 
-# Generate pip constraints file early to lock ABI-critical packages
-COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
-RUN python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
-ENV PIP_CONSTRAINT=/etc/pip-constraints.txt \
-    PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu130
-
-# Preserve base image's ComfyUI installation if present
-RUN if [ -d /opt/ComfyUI ]; then \
-        mv /opt/ComfyUI /opt/comfyui-baked; \
-    else \
-        mkdir -p /opt/comfyui-baked && \
-        git clone --depth 1 --branch v0.33.1 https://github.com/Comfy-Org/ComfyUI.git /opt/comfyui-baked; \
-    fi
-
-# Copy baked ComfyUI to /opt/ComfyUI
-RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
+# Clone ComfyUI v0.33.1 directly into /opt/ComfyUI
+RUN mkdir -p /opt && \
+    git clone --depth 1 --branch v0.33.1 https://github.com/Comfy-Org/ComfyUI.git /opt/ComfyUI
 
 # Pin ComfyUI explicitly to latest v0.33.1
 ARG COMFYUI_MIN_VERSION=0.33.0
@@ -233,7 +223,7 @@ RUN set -eux; \
         [ -f "$req" ] || continue; \
         echo "--- $(basename "$dir") ---"; \
         python3 /usr/local/bin/filter-req.py "$req" /tmp/req.filtered; \
-        pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu130 -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
+        pip install --no-cache-dir -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \
     pip install --no-cache-dir onnxruntime; \
@@ -264,8 +254,10 @@ RUN chmod +x /start.sh /download-models.sh /download-ltx-models.sh /download-sca
 # Final gate: re-run the shared verifier
 RUN python3 /usr/local/bin/verify-sage.py
 
-# Refresh pip constraints file
+# Generate pip constraints file to lock ABI-critical packages
+COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
 RUN python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
+ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
 
 # Record build manifest using standalone build-manifest.sh script
 COPY build-manifest.sh /usr/local/bin/build-manifest.sh
