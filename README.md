@@ -5,7 +5,7 @@ This repository contains all the configuration files and scripts needed to build
 ## Features
 
 - **CUDA 13.0 Multi-Stage Build**: Utilizes `runpod/comfyui:cuda13.0` with discarded `sagebuilder` stage to keep runtime image slim.
-- **ComfyUI Pinned to `v0.31.1`**: The base image bakes ComfyUI `0.30.0`, which is below the `0.31.0` floor the MiniMax H3 core nodes need, so the build checks out `v0.31.1` explicitly. See below.
+- **ComfyUI Pinned to `v0.33.2`**: The base image bakes ComfyUI `0.30.0`, which is below the `0.33.0` floor the latest workflows need, so the build checks out `v0.33.2` explicitly. See below.
 - **SageAttention 2 Multi-Arch Compilation**: Compiled from git source targeting `TORCH_CUDA_ARCH_LIST="8.6;8.9"` for both RTX 3090 (`sm_86`) and RTX 4090 (`sm_89`). **The `;` is mandatory — see below.**
 - **Spectrum Sampler Acceleration**: Pinned `ComfyUI-Spectrum-MiniMax-H3` (`b5fd9db33267623eb3469ee7d6d4ddf397240025`).
 - **Stability Flags**: Pre-configured `--disable-dynamic-vram`, `--disable-async-offload`, `--disable-smart-memory`, and `--reserve-vram 6`.
@@ -115,10 +115,10 @@ pinned by digest it will never drift upward on its own, so the fix is to pin the
 ComfyUI ref explicitly:
 
 ```dockerfile
-ARG COMFYUI_REF=v0.31.1
+ARG COMFYUI_REF=v0.33.2
 ```
 
-`v0.31.1` is the newest `0.31.x` tag on origin. When moving to a newer ComfyUI,
+`v0.33.2` is the newest tag on origin. When moving to a newer ComfyUI,
 bump `COMFYUI_REF` — do **not** lower `COMFYUI_MIN_VERSION`, which exists to stop
 the MiniMax H3 core nodes silently loading against a too-old ComfyUI.
 
@@ -170,8 +170,8 @@ docker buildx build \
   --build-arg EXT_PARALLEL=2 \
   --build-arg NVCC_THREADS=2 \
   --build-arg SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5 \
-  --build-arg COMFYUI_MIN_VERSION=0.31.0 \
-  --build-arg COMFYUI_REF=v0.31.1 \
+  --build-arg COMFYUI_MIN_VERSION=0.33.0 \
+  --build-arg COMFYUI_REF=v0.33.2 \
   -t youruser/sam-ltx23-comfyui:cuda13-v2 .
 ```
 
