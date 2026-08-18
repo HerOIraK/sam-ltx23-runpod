@@ -38,9 +38,6 @@ BLOCKED = {
     "opencv-python-headless",
     "opencv-contrib-python",
     "opencv-contrib-python-headless",
-    "transformers",
-    "tokenizers",
-    "accelerate",
     "nvidia-cublas-cu12",
     "nvidia-cudnn-cu12",
 }

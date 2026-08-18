@@ -130,6 +130,15 @@ RUN python3 /usr/local/bin/verify-sage.py
 # Install specific triton version for compatibility
 RUN pip install --no-cache-dir "triton==3.6.0"
 
+# Install nvidia-vfx for RTX Video Super Resolution
+RUN pip install --no-cache-dir nvidia-vfx --extra-index-url https://pypi.nvidia.com || true
+
+# Generate pip constraints file early to lock ABI-critical packages
+COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
+RUN python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
+ENV PIP_CONSTRAINT=/etc/pip-constraints.txt \
+    PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu130
+
 # Preserve base image's ComfyUI installation if present
 RUN if [ -d /opt/ComfyUI ]; then \
         mv /opt/ComfyUI /opt/comfyui-baked; \
@@ -163,7 +172,7 @@ RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
-# Cleanup list (added ComfyUI-SolAttn_triton and ComfyUI-INT8-Fast)
+# Cleanup list
 RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma ComfyUI-JITBlockSwap comfyui-h3-mlp-chunk ComfyUI-SolAttn_triton ComfyUI-INT8-Fast
 
 # Copy custom node: comfyui-h3-mlp-chunk
@@ -224,7 +233,7 @@ RUN set -eux; \
         [ -f "$req" ] || continue; \
         echo "--- $(basename "$dir") ---"; \
         python3 /usr/local/bin/filter-req.py "$req" /tmp/req.filtered; \
-        pip install --no-cache-dir -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
+        pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu130 -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \
     pip install --no-cache-dir onnxruntime; \
@@ -255,10 +264,8 @@ RUN chmod +x /start.sh /download-models.sh /download-ltx-models.sh /download-sca
 # Final gate: re-run the shared verifier
 RUN python3 /usr/local/bin/verify-sage.py
 
-# Generate pip constraints file to lock ABI-critical packages
-COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
+# Refresh pip constraints file
 RUN python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
-ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
 
 # Record build manifest using standalone build-manifest.sh script
 COPY build-manifest.sh /usr/local/bin/build-manifest.sh
