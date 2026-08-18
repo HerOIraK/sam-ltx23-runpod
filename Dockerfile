@@ -232,16 +232,12 @@ RUN set -eux; \
         [ -f "$req" ] || continue; \
         echo "--- $(basename "$dir") ---"; \
         python3 /usr/local/bin/filter-req.py "$req" /tmp/req.filtered; \
-        pip install --no-cache-dir --no-deps -r /tmp/req.filtered || echo "WARN: $(basename "$dir") deps failed (non-fatal)"; \
+        pip install --no-cache-dir --no-deps -r /tmp/req.filtered || true; \
     done; \
     pip uninstall -y onnxruntime-gpu || true; \
     pip install --no-cache-dir onnxruntime; \
     TORCH_AFTER="$(python3 -c 'import torch; print(torch.__version__)')"; \
     echo "torch after custom-node deps: ${TORCH_AFTER}"; \
-    if [ "${TORCH_BEFORE}" != "${TORCH_AFTER}" ]; then \
-        echo "Restoring CUDA 13 torch 2.10.0+cu130..."; \
-        pip install --no-cache-dir --force-reinstall "torch==2.10.0+cu130" --extra-index-url https://download.pytorch.org/whl/cu130; \
-    fi; \
     python3 -c "import torch; assert torch.version.cuda and torch.version.cuda.startswith('13'), f'FATAL: torch is not a CUDA 13 build: {torch.version.cuda}'"; \
     rm -rf /root/.cache/pip
 

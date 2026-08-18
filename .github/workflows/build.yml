@@ -21,6 +21,8 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache
           sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/lib/jvm
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           df -h /
 
@@ -71,7 +73,7 @@ jobs:
             COMFYUI_MIN_VERSION=0.33.0
             COMFYUI_REF=v0.33.1
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=min
 
       - name: Disk after
         if: always()
