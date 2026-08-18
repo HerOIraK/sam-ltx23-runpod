@@ -52,44 +52,64 @@ RUN set -eux; \
 # Patch 2: Preflight with SageAttention's OWN parser
 RUN python3 - <<'PY'
 import os, sys
-raw = open("/etc/sage-arch").read().strip()
-os.environ["TORCH_CUDA_ARCH_LIST"] = raw
+env = open("/etc/sage-arch").read().strip()
+os.environ["TORCH_CUDA_ARCH_LIST"] = env
+
 try:
     from torch.utils.cpp_extension import _get_cuda_arch_flags
     flags = _get_cuda_arch_flags()
-    print("torch.utils.cpp_extension parsed arch flags:", flags)
-    assert flags, "arch flags evaluated to empty list"
 except Exception as e:
-    sys.exit(f"FATAL: TORCH_CUDA_ARCH_LIST={raw!r} failed torch preflight: {e}")
+    sys.exit(f"FATAL: torch.utils.cpp_extension._get_cuda_arch_flags() crashed: {e}")
+
+print("torch arch flags     :", flags)
+caps = [f.split("compute_")[1].split(",")[0] for f in flags if "compute_" in f]
+print("extracted capabilities:", caps)
+
+has = {a: any(c.startswith(a) for c in caps) for a in ("8.0", "8.6", "8.9", "9.0", "12.0")}
+print("HAS_SMxx            :", has)
+
+sm80 = any(has.values())
+sm89 = has["8.9"] or has["9.0"] or has["12.0"]
+print("will build          :",
+      [n for n, on in (("_qattn_sm80", sm80), ("_qattn_sm89", sm89), ("_fused", True)) if on])
+
+if not sm80:
+    sys.exit("FATAL: _qattn_sm80 would not be built -> RTX 3090 unsupported")
+if not sm89:
+    sys.exit(f"FATAL: _qattn_sm89 would not be built -> RTX 4090/5090 FP8 unsupported "
+             f"(arch list {env!r} never yielded 8.9 or 12.0)")
+print("arch preflight PASSED")
 PY
 
-WORKDIR /tmp/sageattention-build
-RUN git clone "${SAGE_REPO}" . \
-    && git checkout "${SAGE_REF}"
-
-RUN ARCH="$(cat /etc/sage-arch)" \
-    && echo "Building SageAttention wheel with TORCH_CUDA_ARCH_LIST=[$ARCH] (MAX_JOBS=${MAX_JOBS}, EXT_PARALLEL=${EXT_PARALLEL}, NVCC_THREADS=${NVCC_THREADS})" \
-    && TORCH_CUDA_ARCH_LIST="$ARCH" \
-       MAX_JOBS="${MAX_JOBS}" \
-       EXT_PARALLEL="${EXT_PARALLEL}" \
-       NVCC_THREADS="${NVCC_THREADS}" \
-       python3 setup.py bdist_wheel --dist-dir /opt/wheels
-
-# Patch 3: Shared verifier script
-COPY verify-sage.py /usr/local/bin/verify-sage.py
-RUN chmod +x /usr/local/bin/verify-sage.py
-
-# Stage 1 smoke test
 RUN set -eux; \
-    WHEEL="$(ls -1 /opt/wheels/sageattention-*.whl 2>/dev/null | head -n 1)"; \
-    test -n "$WHEEL" || { echo "FATAL: no wheel found in /opt/wheels"; exit 1; }; \
-    pip install --no-cache-dir "$WHEEL"; \
-    python3 /usr/local/bin/verify-sage.py; \
-    unzip -q -d /tmp/whlx "$WHEEL"; \
-    cuobjdump --list-elf /tmp/whlx/sageattention/_fused*.so | grep -q 'sm_86' \
-      || { echo "FATAL: _fused carries no sm_86 SASS"; exit 1; }; \
-    cuobjdump --list-elf /tmp/whlx/sageattention/_fused*.so | grep -q 'sm_89' \
-      || { echo "FATAL: _fused carries no sm_89 SASS"; exit 1; }; \
+    export TORCH_CUDA_ARCH_LIST="$(cat /etc/sage-arch)"; \
+    export MAX_JOBS="${MAX_JOBS}"; \
+    export EXT_PARALLEL="${EXT_PARALLEL}"; \
+    export NVCC_APPEND_FLAGS="--threads ${NVCC_THREADS}"; \
+    echo "Building SageAttention: arch=${TORCH_CUDA_ARCH_LIST} ext_parallel=${EXT_PARALLEL} ref=${SAGE_REF}"; \
+    mkdir -p /opt/wheels; \
+    pip wheel --no-cache-dir --no-build-isolation --no-deps -w /opt/wheels \
+        "git+${SAGE_REPO}@${SAGE_REF}"; \
+    ls -la /opt/wheels; \
+    test -n "$(ls /opt/wheels/sageattention-*.whl 2>/dev/null)"
+
+# Ground truth SASS verification
+RUN set -eux; \
+    rm -rf /tmp/whlx; mkdir -p /tmp/whlx; \
+    python3 -m zipfile -e /opt/wheels/sageattention-*.whl /tmp/whlx; \
+    ls -la /tmp/whlx/sageattention/*.so; \
+    for so in /tmp/whlx/sageattention/*.so; do \
+        echo "== $(basename "$so")"; \
+        cuobjdump --list-elf "$so" | grep -oE 'sm_[0-9]+' | sort -u | sed 's/^/     /'; \
+    done; \
+    ls /tmp/whlx/sageattention/*sm80*.so >/dev/null 2>&1 \
+      || { echo "FATAL: _qattn_sm80 extension absent (RTX 3090 path)"; exit 1; }; \
+    ls /tmp/whlx/sageattention/*sm89*.so >/dev/null 2>&1 \
+      || { echo "FATAL: _qattn_sm89 extension absent (RTX 4090/5090 FP8 path)"; exit 1; }; \
+    cuobjdump --list-elf /tmp/whlx/sageattention/*sm80*.so | grep -q 'sm_86' \
+      || { echo "FATAL: _qattn_sm80 carries no sm_86 SASS"; exit 1; }; \
+    cuobjdump --list-elf /tmp/whlx/sageattention/*sm89*.so | grep -q 'sm_89' \
+      || { echo "FATAL: _qattn_sm89 carries no sm_89 SASS"; exit 1; }; \
     rm -rf /tmp/whlx; \
     echo "SASS verification PASSED: sm_86 + sm_89 + sm_120 present in the wheel"
 
@@ -233,7 +253,8 @@ RUN python3 /usr/local/bin/verify-sage.py
 
 # Generate pip constraints file to lock ABI-critical packages
 COPY make-pip-constraints.py /usr/local/bin/make-pip-constraints.py
-RUN python3 /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
+RUN chmod +x /usr/local/bin/make-pip-constraints.py \
+ && /usr/local/bin/make-pip-constraints.py /etc/pip-constraints.txt
 ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
 
 # Record build manifest using standalone build-manifest.sh script
