@@ -149,10 +149,6 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:T
 ARGS=(main.py --listen 0.0.0.0 --port 8188 --enable-cors-header)
 
 [ "${ENABLE_MANAGER:-true}" = "true" ] && ARGS+=(--enable-manager)
-[ "${ENABLE_FAST:-true}" = "true" ] && ARGS+=(--fast)
-[ "${HIGH_VRAM:-true}" = "true" ] && ARGS+=(--highvram)
-[ "${PREVIEW_METHOD:-auto}" != "none" ] && ARGS+=(--preview-method "${PREVIEW_METHOD:-auto}")
-
 [ "${DISABLE_DYNAMIC_VRAM:-0}" = "1" ] && ARGS+=(--disable-dynamic-vram)
 [ "${DISABLE_ASYNC_OFFLOAD:-0}" = "1" ] && ARGS+=(--disable-async-offload)
 [ "${DISABLE_SMART_MEMORY:-0}" = "1" ] && ARGS+=(--disable-smart-memory)
