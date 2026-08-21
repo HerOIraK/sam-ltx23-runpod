@@ -182,7 +182,7 @@ RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
 WORKDIR /opt/ComfyUI/custom_nodes
 
 # Cleanup list
-RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma ComfyUI-JITBlockSwap comfyui-h3-mlp-chunk ComfyUI-SolAttn_triton ComfyUI-INT8-Fast Comfyui-Resolution-Master cg-use-everywhere
+RUN rm -rf ComfyUI-LTXVideo WhatDreamsCost-ComfyUI ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact-Pack ComfyUI-Manager ComfyUI-Easy-Use ComfyUI-mxToolkit ComfyUI_tinyterraNodes ComfyUI_Comfyroll_CustomNodes Nvidia_RTX_Nodes_ComfyUI comfyui-art-venture CRT-Nodes ComfyUI-DaSiWa-Nodes comfyui_controlnet_aux ComfyUI-Frame-Interpolation Civicomfy ComfyUI-Spectrum-MiniMax-H3 ComfyUI-Lora-Manager ComfyUI_Steudio ComfyUI-Pixaroma ComfyUI-JITBlockSwap comfyui-h3-mlp-chunk ComfyUI-SolAttn_triton ComfyUI-INT8-Fast Comfyui-Resolution-Master cg-use-everywhere Comfyui_Minimax_h3_latent_Upscaler
 
 # Copy custom node: comfyui-h3-mlp-chunk
 COPY custom_nodes/comfyui-h3-mlp-chunk ./comfyui-h3-mlp-chunk
@@ -215,7 +215,8 @@ RUN git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git && \
     git clone --depth 1 https://github.com/kijai/ComfyUI-SolAttn_triton.git && \
     git clone --depth 1 https://github.com/BobJohnson24/ComfyUI-INT8-Fast.git && \
     git clone --depth 1 https://github.com/Azornes/Comfyui-Resolution-Master.git && \
-    git clone --depth 1 https://github.com/chrisgoringe/cg-use-everywhere.git
+    git clone --depth 1 https://github.com/chrisgoringe/cg-use-everywhere.git && \
+    git clone --depth 1 https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git
 
 # Resilient LTXVideo import patch
 RUN python3 - <<'PY'
