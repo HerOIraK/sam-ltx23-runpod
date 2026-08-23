@@ -93,26 +93,32 @@ if [[ -d "$VOLUME_DIR" ]]; then
     ln -s "$VOLUME_DIR/user" "$COMFYUI_DIR/user"
 fi
 
-# 3. Optional Model Fetch (Patch 6)
-if [ "${DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_LTX_MODELS:-false}" = "true" ]; then
-    echo "[models] Fetching required models into $VOLUME_DIR/models..."
+# 3. Optional Model Fetch (MiniMax H3 & SEEDHUNTER Suite)
+if [ "${DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_MODELS:-false}" = "true" ]; then
+    echo "[models] Fetching required MiniMax H3 & SEEDHUNTER models into $VOLUME_DIR/models..."
     export HF_HUB_ENABLE_HF_TRANSFER=1
     M="$VOLUME_DIR/models"
-    mkdir -p "$M/diffusion_models" "$M/text_encoders" "$M/vae" "$M/loras" "$M/clip_projections"
+    mkdir -p "$M/diffusion_models" "$M/text_encoders" "$M/vae" "$M/latent_upscale_models" "$M/vae_approx" "$M/loras"
 
     fetch() {
         if [ -s "$1" ]; then echo "present: $(basename "$1")"; return 0; fi
         echo "downloading: $(basename "$1")"
-        aria2c -x 8 -s 8 -c --dir "$(dirname "$1")" --out "$(basename "$1")" \
+        aria2c -x 16 -s 16 -k 1M -c --dir "$(dirname "$1")" --out "$(basename "$1")" \
             ${HF_TOKEN:+--header "Authorization: Bearer ${HF_TOKEN}"} "$2" \
             || echo "WARN: failed $(basename "$1")"
     }
 
-    HF="https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main"
-    fetch "$M/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors" "$HF/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors"
-    fetch "$M/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"        "$HF/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
-    fetch "$M/vae/minimax_h3_video_vae_fp16.safetensors"                          "$HF/vae/minimax_h3_video_vae_fp16.safetensors"
-    fetch "$M/vae/minimax_h3_audio_vae_fp32.safetensors"                          "$HF/vae/minimax_h3_audio_vae_fp32.safetensors"
+    # Base models
+    HF_H3="https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main"
+    fetch "$M/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors" "$HF_H3/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+    fetch "$M/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"        "$HF_H3/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+    fetch "$M/vae/minimax_h3_video_vae_fp16.safetensors"                          "$HF_H3/vae/minimax_h3_video_vae_fp16.safetensors"
+    fetch "$M/vae/minimax_h3_audio_vae_fp32.safetensors"                          "$HF_H3/vae/minimax_h3_audio_vae_fp32.safetensors"
+
+    # Latent Upscaler, Preview Approx & Turbo LoRA
+    fetch "$M/latent_upscale_models/minimax_h3_latent_upscaler_3d_bf16.safetensors" "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_bf16.safetensors"
+    fetch "$M/vae_approx/taeh3.safetensors"                                         "https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors"
+    fetch "$M/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"     "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
 
     df -h "$VOLUME_DIR" | tail -n1
 else

@@ -215,9 +215,7 @@ RUN curl -fsSL https://code-server.dev/install.sh | sh
 # Copy entrypoint scripts
 COPY start.sh /start.sh
 COPY download-models.sh /download-models.sh
-COPY download-ltx-models.sh /download-ltx-models.sh
-COPY download-scail2-models.sh /download-scail2-models.sh
-RUN chmod +x /start.sh /download-models.sh /download-ltx-models.sh /download-scail2-models.sh
+RUN chmod +x /start.sh /download-models.sh
 
 # Final gate: re-run the shared verifier
 RUN python3 /usr/local/bin/verify-sage.py
