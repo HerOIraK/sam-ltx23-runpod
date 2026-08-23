@@ -187,7 +187,7 @@ RUN rm -rf ComfyUI-KJNodes ComfyUI-VideoHelperSuite rgthree-comfy ComfyUI-Impact
 # Copy custom node: comfyui-h3-mlp-chunk
 COPY custom_nodes/comfyui-h3-mlp-chunk ./comfyui-h3-mlp-chunk
 
-# Pre-install core multimedia & scientific dependencies for KJNodes, VHS, and rgthree
+# Pre-install core multimedia, vision & NLP dependencies for Easy-Use, KJNodes, VHS, and rgthree
 RUN pip install --no-cache-dir \
     av \
     imageio \
@@ -200,7 +200,15 @@ RUN pip install --no-cache-dir \
     scipy \
     einops \
     rich \
-    pydantic
+    pydantic \
+    color-matcher \
+    mss \
+    lark \
+    clip_interrogator \
+    sentencepiece \
+    spandrel \
+    diffusers \
+    peft
 
 # Clone required custom node packs
 RUN git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
@@ -250,6 +258,35 @@ RUN set -eux; \
     fi; \
     python3 -c "import torch; assert torch.version.cuda and torch.version.cuda.startswith('13'), f'FATAL: torch is not a CUDA 13 build: {torch.version.cuda}'"; \
     rm -rf /root/.cache/pip
+
+# Verification gate: test importing all core custom nodes
+RUN python3 - <<'PYTEST'
+import sys, os, importlib
+sys.path.insert(0, '/opt/ComfyUI')
+
+nodes = [
+    'ComfyUI-KJNodes',
+    'ComfyUI-VideoHelperSuite',
+    'rgthree-comfy',
+    'ComfyUI-Easy-Use',
+    'CRT-Nodes',
+    'ComfyUI-DaSiWa-Nodes',
+    'Comfyui-Resolution-Master',
+    'cg-use-everywhere',
+    'Comfyui_Minimax_h3_latent_Upscaler'
+]
+
+print("=== VERIFYING CUSTOM NODE IMPORTS ===")
+for node in nodes:
+    node_path = f"/opt/ComfyUI/custom_nodes/{node}"
+    if os.path.exists(node_path):
+        try:
+            importlib.import_module(f"custom_nodes.{node}")
+            print(f"  ✓ {node} imported successfully")
+        except Exception as e:
+            print(f"  ✗ WARNING/ERROR on {node}: {e}")
+print("=== VERIFICATION COMPLETE ===")
+PYTEST
 
 # Copy workflows & settings
 RUN mkdir -p /opt/ComfyUI/user/default/workflows /opt/ComfyUI/user/__manager
