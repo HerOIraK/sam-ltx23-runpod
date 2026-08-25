@@ -206,7 +206,8 @@ RUN pip install --no-cache-dir \
 # Clone requested custom node packs
 RUN git clone --depth 1 https://github.com/Smirnov75/ComfyUI-mxToolkit.git && \
     git clone --depth 1 https://github.com/KBYSHanahira/Civicomfy.git && \
-    git clone --depth 1 https://github.com/Azornes/Comfyui-Resolution-Master.git
+    git clone --depth 1 https://github.com/Azornes/Comfyui-Resolution-Master.git && \
+    git clone --depth 1 https://github.com/MadiatorLabs/ComfyUI-RunpodDirect.git
 
 # Copy workflows & settings
 RUN mkdir -p /opt/ComfyUI/user/default/workflows /opt/ComfyUI/user/__manager
