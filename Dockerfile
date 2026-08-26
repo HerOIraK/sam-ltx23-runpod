@@ -187,7 +187,7 @@ RUN find /opt/ComfyUI/custom_nodes -mindepth 1 -maxdepth 1 ! -name 'ComfyUI-Mana
         git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git /opt/ComfyUI/custom_nodes/ComfyUI-Manager; \
     fi
 
-# Pre-install core multimedia, vision, and helper libraries
+# Pre-install core multimedia, vision, and NLP libraries
 RUN pip install --no-cache-dir \
     av \
     imageio \
@@ -201,13 +201,38 @@ RUN pip install --no-cache-dir \
     einops \
     rich \
     pydantic \
-    onnxruntime
+    onnxruntime \
+    color-matcher \
+    mss \
+    lark \
+    clip_interrogator \
+    sentencepiece \
+    spandrel \
+    diffusers \
+    peft
 
-# Clone requested custom node packs
-RUN git clone --depth 1 https://github.com/Smirnov75/ComfyUI-mxToolkit.git && \
-    git clone --depth 1 https://github.com/KBYSHanahira/Civicomfy.git && \
+# Clone required custom node packs
+RUN git clone --depth 1 https://github.com/FX-FeiHou/ComfyUI-FeiHou-Easy-H3.git && \
+    git clone --depth 1 https://github.com/FX-FeiHou/ComfyUI-FeiHou-Toolbox.git && \
+    git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
+    git clone --depth 1 https://github.com/rgthree/rgthree-comfy.git && \
+    git clone --depth 1 https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git && \
+    git clone --depth 1 https://github.com/yolain/ComfyUI-Easy-Use.git && \
+    git clone --depth 1 https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes.git && \
+    git clone --depth 1 https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git && \
+    git clone --depth 1 https://github.com/obvpm/comfyui-obvpm.git && \
+    git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
+    git clone --depth 1 https://github.com/plugcrypt/CRT-Nodes.git && \
     git clone --depth 1 https://github.com/Azornes/Comfyui-Resolution-Master.git && \
-    git clone --depth 1 https://github.com/MadiatorLabs/ComfyUI-RunpodDirect.git
+    git clone --depth 1 https://github.com/chrisgoringe/cg-use-everywhere.git && \
+    git clone --depth 1 https://github.com/MadiatorLabs/ComfyUI-RunpodDirect.git && \
+    git clone --depth 1 https://github.com/Smirnov75/ComfyUI-mxToolkit.git && \
+    git clone --depth 1 https://github.com/KBYSHanahira/Civicomfy.git && \
+    git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git && \
+    git clone https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git && \
+    git -C ComfyUI-Spectrum-MiniMax-H3 checkout b5fd9db33267623eb3469ee7d6d4ddf397240025 && \
+    git clone --depth 1 https://github.com/kijai/ComfyUI-SolAttn_triton.git && \
+    git clone --depth 1 https://github.com/BobJohnson24/ComfyUI-INT8-Fast.git
 
 # Copy workflows & settings
 RUN mkdir -p /opt/ComfyUI/user/default/workflows /opt/ComfyUI/user/__manager
