@@ -209,7 +209,9 @@ RUN pip install --no-cache-dir \
     sentencepiece \
     spandrel \
     diffusers \
-    peft
+    peft \
+    piexif \
+    segment-anything
 
 # Clone required custom node packs
 RUN git clone --depth 1 https://github.com/FX-FeiHou/ComfyUI-FeiHou-Easy-H3.git && \

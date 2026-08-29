@@ -93,6 +93,16 @@ if [[ -d "$VOLUME_DIR" ]]; then
     ln -s "$VOLUME_DIR/user" "$COMFYUI_DIR/user"
 fi
 
+# Clean duplicate lowercase legacy custom node folders that crash frontend
+if [ -d "$COMFYUI_DIR/custom_nodes/comfyui-videohelpersuite" ] && [ -d "$COMFYUI_DIR/custom_nodes/ComfyUI-VideoHelperSuite" ]; then
+    echo "[cleanup] Removing lowercase duplicate comfyui-videohelpersuite..."
+    rm -rf "$COMFYUI_DIR/custom_nodes/comfyui-videohelpersuite"
+fi
+if [ -d "$VOLUME_DIR/custom_nodes/comfyui-videohelpersuite" ] && [ -d "$VOLUME_DIR/custom_nodes/ComfyUI-VideoHelperSuite" ]; then
+    echo "[cleanup] Removing lowercase duplicate in volume: comfyui-videohelpersuite..."
+    rm -rf "$VOLUME_DIR/custom_nodes/comfyui-videohelpersuite"
+fi
+
 # 3. Optional Model Fetch (MiniMax H3 & SEEDHUNTER Suite)
 if [ "${DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_MODELS:-false}" = "true" ]; then
     echo "[models] Fetching required MiniMax H3 & SEEDHUNTER models into $VOLUME_DIR/models..."
