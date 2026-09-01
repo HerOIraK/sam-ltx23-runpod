@@ -159,9 +159,9 @@ ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.cache/inductor
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Pin ComfyUI explicitly to v0.33.2
-ARG COMFYUI_MIN_VERSION=0.33.0
-ARG COMFYUI_REF=v0.33.2
+# Pin ComfyUI explicitly to v0.34.2
+ARG COMFYUI_MIN_VERSION=0.34.0
+ARG COMFYUI_REF=v0.34.2
 
 COPY filter-req.py /usr/local/bin/filter-req.py
 COPY pin-comfyui.sh /usr/local/bin/pin-comfyui.sh
