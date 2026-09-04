@@ -101,9 +101,18 @@ else
     echo "repo is a full clone -> fetching without --depth (history preserved)"
 fi
 
-echo "attempt 1: explicit tag refspec"
-if git fetch ${DEPTH_ARG} origin "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}" 2>/dev/null; then
-    fetched=1
+if git ls-remote --heads origin 2>/dev/null | grep -q "refs/heads/${PIN_REF}\$"; then
+    echo "attempt branch fetch: origin/${PIN_REF}"
+    if git fetch ${DEPTH_ARG} origin "+refs/heads/${PIN_REF}:refs/remotes/origin/${PIN_REF}" 2>/dev/null; then
+        fetched=1
+    fi
+fi
+
+if [ "$fetched" -eq 0 ]; then
+    echo "attempt 1: explicit tag refspec"
+    if git fetch ${DEPTH_ARG} origin "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}" 2>/dev/null; then
+        fetched=1
+    fi
 fi
 
 if [ "$fetched" -eq 0 ]; then
@@ -129,6 +138,7 @@ if [ "$fetched" -eq 0 ]; then
 fi
 
 git checkout --detach "refs/tags/${PIN_REF}" 2>/dev/null \
+    || git checkout --detach "origin/${PIN_REF}" 2>/dev/null \
     || git checkout --detach "${PIN_REF}" 2>/dev/null \
     || echo "WARN: checkout of ${PIN_REF} detached directly."
 

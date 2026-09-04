@@ -159,9 +159,9 @@ ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.cache/inductor
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Pin ComfyUI explicitly to v0.34.2
+# Pin ComfyUI explicitly to master (includes native MiniMax H3 Fun ControlNet)
 ARG COMFYUI_MIN_VERSION=0.34.0
-ARG COMFYUI_REF=v0.34.2
+ARG COMFYUI_REF=master
 
 COPY filter-req.py /usr/local/bin/filter-req.py
 COPY pin-comfyui.sh /usr/local/bin/pin-comfyui.sh
@@ -211,7 +211,9 @@ RUN pip install --no-cache-dir \
     diffusers \
     peft \
     piexif \
-    segment-anything
+    segment-anything \
+    timm \
+    opencv-python-headless
 
 # Clone required custom node packs
 RUN git clone --depth 1 https://github.com/FX-FeiHou/ComfyUI-FeiHou-Easy-H3.git && \
@@ -230,6 +232,7 @@ RUN git clone --depth 1 https://github.com/FX-FeiHou/ComfyUI-FeiHou-Easy-H3.git 
     git clone --depth 1 https://github.com/MadiatorLabs/ComfyUI-RunpodDirect.git && \
     git clone --depth 1 https://github.com/Smirnov75/ComfyUI-mxToolkit.git && \
     git clone --depth 1 https://github.com/KBYSHanahira/Civicomfy.git && \
+    git clone --depth 1 https://github.com/Fannovel16/comfyui_controlnet_aux.git && \
     git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git && \
     git clone https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git && \
     git -C ComfyUI-Spectrum-MiniMax-H3 checkout b5fd9db33267623eb3469ee7d6d4ddf397240025 && \
