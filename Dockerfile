@@ -159,9 +159,9 @@ ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.cache/inductor
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Pin ComfyUI explicitly to master (includes native MiniMax H3 Fun ControlNet)
+# Pin ComfyUI explicitly to latest master commit (includes native MiniMax H3 Fun ControlNet)
 ARG COMFYUI_MIN_VERSION=0.34.0
-ARG COMFYUI_REF=master
+ARG COMFYUI_REF=15eb748b3ec5f8a0a2d470b7fb280e2d7579f916
 
 COPY filter-req.py /usr/local/bin/filter-req.py
 COPY pin-comfyui.sh /usr/local/bin/pin-comfyui.sh
@@ -181,11 +181,10 @@ RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
 
 WORKDIR /opt/ComfyUI/custom_nodes
 
-# Clean custom_nodes directory to leave a pristine environment with ComfyUI-Manager only
-RUN find /opt/ComfyUI/custom_nodes -mindepth 1 -maxdepth 1 ! -name 'ComfyUI-Manager' -exec rm -rf {} + \
-    && if [ ! -d "/opt/ComfyUI/custom_nodes/ComfyUI-Manager" ]; then \
-        git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git /opt/ComfyUI/custom_nodes/ComfyUI-Manager; \
-    fi
+# Clean custom_nodes directory and freshly clone the latest ComfyUI-Manager from origin
+RUN rm -rf /opt/ComfyUI/custom_nodes/* \
+    && git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git /opt/ComfyUI/custom_nodes/ComfyUI-Manager \
+    && pip install --no-cache-dir -r /opt/ComfyUI/custom_nodes/ComfyUI-Manager/requirements.txt || true
 
 # Pre-install core multimedia, vision, and NLP libraries
 RUN pip install --no-cache-dir \

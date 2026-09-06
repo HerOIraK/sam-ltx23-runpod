@@ -109,6 +109,13 @@ if git ls-remote --heads origin 2>/dev/null | grep -q "refs/heads/${PIN_REF}\$";
 fi
 
 if [ "$fetched" -eq 0 ]; then
+    echo "attempt 0: direct commit fetch"
+    if git fetch ${DEPTH_ARG} origin "${PIN_REF}" 2>/dev/null; then
+        fetched=1
+    fi
+fi
+
+if [ "$fetched" -eq 0 ]; then
     echo "attempt 1: explicit tag refspec"
     if git fetch ${DEPTH_ARG} origin "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}" 2>/dev/null; then
         fetched=1
@@ -137,9 +144,9 @@ if [ "$fetched" -eq 0 ]; then
     fi
 fi
 
-git checkout --detach "refs/tags/${PIN_REF}" 2>/dev/null \
+git checkout --detach "${PIN_REF}" 2>/dev/null \
+    || git checkout --detach "refs/tags/${PIN_REF}" 2>/dev/null \
     || git checkout --detach "origin/${PIN_REF}" 2>/dev/null \
-    || git checkout --detach "${PIN_REF}" 2>/dev/null \
     || echo "WARN: checkout of ${PIN_REF} detached directly."
 
 echo "checked out: $(git describe --tags --always 2>/dev/null || echo unknown)"

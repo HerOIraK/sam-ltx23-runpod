@@ -61,7 +61,7 @@ jobs:
             NVCC_THREADS=2
             SAGE_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
             COMFYUI_MIN_VERSION=0.34.0
-            COMFYUI_REF=master
+            COMFYUI_REF=15eb748b3ec5f8a0a2d470b7fb280e2d7579f916
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
 

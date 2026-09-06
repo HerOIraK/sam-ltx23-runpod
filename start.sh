@@ -103,6 +103,12 @@ if [ -d "$VOLUME_DIR/custom_nodes/comfyui-videohelpersuite" ] && [ -d "$VOLUME_D
     rm -rf "$VOLUME_DIR/custom_nodes/comfyui-videohelpersuite"
 fi
 
+# Ensure ComfyUI-Manager is updated on boot
+if [ -d "$COMFYUI_DIR/custom_nodes/ComfyUI-Manager/.git" ]; then
+    echo "[manager] Updating ComfyUI-Manager to latest commit..."
+    git -C "$COMFYUI_DIR/custom_nodes/ComfyUI-Manager" pull --ff-only 2>/dev/null || true
+fi
+
 # 3. Optional Model Fetch (MiniMax H3 & SEEDHUNTER Suite)
 if [ "${DOWNLOAD_MODELS:-false}" = "true" ] || [ "${AUTO_DOWNLOAD_MODELS:-false}" = "true" ]; then
     echo "[models] Fetching required MiniMax H3 & SEEDHUNTER models into $VOLUME_DIR/models..."
