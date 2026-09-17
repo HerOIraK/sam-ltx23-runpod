@@ -11,7 +11,7 @@
 set -euo pipefail
 
 COMFY_DIR="${COMFY_DIR:-/opt/ComfyUI}"
-MIN_VERSION="${COMFYUI_MIN_VERSION:-0.34.0}"
+MIN_VERSION="${COMFYUI_MIN_VERSION:-0.36.0}"
 PIN_REF="${COMFYUI_REF:-}"
 
 echo "=============================================================="
@@ -162,6 +162,8 @@ if [ -f requirements.txt ]; then
         echo "FATAL: ComfyUI requirements.txt moved torch ${TORCH_BEFORE} -> ${TORCH_AFTER}"
         exit 1
     fi
+    # Ensure full workflow templates bundle with all assets & media is installed
+    pip install --no-cache-dir "comfyui-workflow-templates[all]>=0.11.62" "comfyui-frontend-package>=1.52.7" "comfyui-embedded-docs>=0.5.11" || true
 fi
 
 FINAL_VERSION="$(read_version)"

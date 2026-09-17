@@ -159,9 +159,9 @@ ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.cache/inductor
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Pin ComfyUI explicitly to latest master commit (includes native MiniMax H3 Fun ControlNet)
-ARG COMFYUI_MIN_VERSION=0.34.0
-ARG COMFYUI_REF=15eb748b3ec5f8a0a2d470b7fb280e2d7579f916
+# Pin ComfyUI explicitly to v0.36.0
+ARG COMFYUI_MIN_VERSION=0.36.0
+ARG COMFYUI_REF=v0.36.0
 
 COPY filter-req.py /usr/local/bin/filter-req.py
 COPY pin-comfyui.sh /usr/local/bin/pin-comfyui.sh
@@ -171,8 +171,12 @@ RUN COMFYUI_MIN_VERSION="${COMFYUI_MIN_VERSION}" \
     COMFYUI_REF="${COMFYUI_REF}" \
     /usr/local/bin/pin-comfyui.sh
 
-# Upgrade huggingface_hub without touching pinned frontend/manager packages
-RUN pip install --no-cache-dir --upgrade "huggingface_hub[cli]" hf_transfer
+# Upgrade huggingface_hub, frontend package, and complete workflow templates bundle
+RUN pip install --no-cache-dir --upgrade \
+    "huggingface_hub[cli]" hf_transfer \
+    "comfyui-frontend-package>=1.52.7" \
+    "comfyui-workflow-templates[all]>=0.11.62" \
+    "comfyui-embedded-docs>=0.5.11"
 
 # Install ComfyUI-Manager dependencies directly from tree if present
 RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \
@@ -236,7 +240,8 @@ RUN git clone --depth 1 https://github.com/FX-FeiHou/ComfyUI-FeiHou-Easy-H3.git 
     git clone https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git && \
     git -C ComfyUI-Spectrum-MiniMax-H3 checkout b5fd9db33267623eb3469ee7d6d4ddf397240025 && \
     git clone --depth 1 https://github.com/kijai/ComfyUI-SolAttn_triton.git && \
-    git clone --depth 1 https://github.com/BobJohnson24/ComfyUI-INT8-Fast.git
+    git clone --depth 1 https://github.com/BobJohnson24/ComfyUI-INT8-Fast.git && \
+    git clone --depth 1 https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes.git
 
 # Copy workflows & settings
 RUN mkdir -p /opt/ComfyUI/user/default/workflows /opt/ComfyUI/user/__manager
