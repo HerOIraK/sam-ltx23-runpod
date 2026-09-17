@@ -83,10 +83,14 @@ fi
 # ------------------------------------------------------------- explicit pin
 echo "Explicit pin requested. Checking that '${PIN_REF}' exists on origin..."
 
+is_tag=0
+is_branch=0
 if git ls-remote --tags --refs origin 2>/dev/null | grep -q "refs/tags/${PIN_REF}\$"; then
     echo "  found refs/tags/${PIN_REF}"
+    is_tag=1
 elif git ls-remote --heads origin 2>/dev/null | grep -q "refs/heads/${PIN_REF}\$"; then
     echo "  found refs/heads/${PIN_REF} (branch, not tag)"
+    is_branch=1
 else
     echo "  Attempting upstream fetch..."
 fi
@@ -101,7 +105,14 @@ else
     echo "repo is a full clone -> fetching without --depth (history preserved)"
 fi
 
-if git ls-remote --heads origin 2>/dev/null | grep -q "refs/heads/${PIN_REF}\$"; then
+if [ "$is_tag" -eq 1 ]; then
+    echo "attempt tag fetch: refs/tags/${PIN_REF}"
+    if git fetch ${DEPTH_ARG} origin "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}" 2>/dev/null; then
+        fetched=1
+    fi
+fi
+
+if [ "$is_branch" -eq 1 ] && [ "$fetched" -eq 0 ]; then
     echo "attempt branch fetch: origin/${PIN_REF}"
     if git fetch ${DEPTH_ARG} origin "+refs/heads/${PIN_REF}:refs/remotes/origin/${PIN_REF}" 2>/dev/null; then
         fetched=1
@@ -109,47 +120,50 @@ if git ls-remote --heads origin 2>/dev/null | grep -q "refs/heads/${PIN_REF}\$";
 fi
 
 if [ "$fetched" -eq 0 ]; then
-    echo "attempt 0: direct commit fetch"
+    echo "attempt: commit or ref fetch"
     if git fetch ${DEPTH_ARG} origin "${PIN_REF}" 2>/dev/null; then
         fetched=1
     fi
 fi
 
 if [ "$fetched" -eq 0 ]; then
-    echo "attempt 1: explicit tag refspec"
-    if git fetch ${DEPTH_ARG} origin "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}" 2>/dev/null; then
-        fetched=1
-    fi
-fi
-
-if [ "$fetched" -eq 0 ]; then
-    echo "attempt 2: upstream remote fetch"
+    echo "attempt: upstream tag refspec fallback"
     if git fetch ${DEPTH_ARG} https://github.com/Comfy-Org/ComfyUI.git "+refs/tags/${PIN_REF}:refs/tags/${PIN_REF}" 2>/dev/null; then
         fetched=1
     fi
 fi
 
 if [ "$fetched" -eq 0 ]; then
-    echo "attempt 3: full tag fetch"
+    echo "attempt: upstream commit/branch fetch fallback"
+    if git fetch ${DEPTH_ARG} https://github.com/Comfy-Org/ComfyUI.git "${PIN_REF}" 2>/dev/null; then
+        fetched=1
+    fi
+fi
+
+if [ "$fetched" -eq 0 ]; then
+    echo "attempt: full tag fetch"
     if git fetch --tags --force origin 2>/dev/null; then
         fetched=1
     fi
 fi
 
 if [ "$fetched" -eq 0 ]; then
-    echo "attempt 4: unshallow, then full tag fetch"
+    echo "attempt: unshallow, then full tag fetch"
     git fetch --unshallow origin 2>/dev/null || true
     if git fetch --tags --force origin 2>/dev/null; then
         fetched=1
     fi
 fi
 
-git checkout --detach "${PIN_REF}" 2>/dev/null \
-    || git checkout --detach "refs/tags/${PIN_REF}" 2>/dev/null \
+if git checkout --detach "refs/tags/${PIN_REF}" 2>/dev/null \
     || git checkout --detach "origin/${PIN_REF}" 2>/dev/null \
-    || echo "WARN: checkout of ${PIN_REF} detached directly."
-
-echo "checked out: $(git describe --tags --always 2>/dev/null || echo unknown)"
+    || git checkout --detach "${PIN_REF}" 2>/dev/null \
+    || git checkout --detach FETCH_HEAD 2>/dev/null; then
+    echo "checked out: $(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+else
+    echo "FATAL: failed to checkout '${PIN_REF}' after fetch."
+    exit 1
+fi
 
 # --------------------------------------------------- realign pinned helper pkgs
 if [ -f requirements.txt ]; then
@@ -162,8 +176,6 @@ if [ -f requirements.txt ]; then
         echo "FATAL: ComfyUI requirements.txt moved torch ${TORCH_BEFORE} -> ${TORCH_AFTER}"
         exit 1
     fi
-    # Ensure full workflow templates bundle with all assets & media is installed
-    pip install --no-cache-dir "comfyui-workflow-templates[all]>=0.11.62" "comfyui-frontend-package>=1.52.7" "comfyui-embedded-docs>=0.5.11" || true
 fi
 
 FINAL_VERSION="$(read_version)"
