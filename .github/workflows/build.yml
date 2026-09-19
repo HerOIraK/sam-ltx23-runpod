@@ -48,6 +48,8 @@ jobs:
           push: true
           provenance: false
           tags: |
+            ${{ env.IMAGE }}:cuda13
+            ${{ env.IMAGE }}:cu13
             ${{ env.IMAGE }}:cuda13-v2
             ${{ env.IMAGE }}:h3-cu130-v2
             ${{ env.IMAGE }}:latest

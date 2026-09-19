@@ -93,7 +93,18 @@ except Exception as exc:
     print("                  On sm_86, sageattn() dispatches to the Triton kernel.")
 
 if not torch.cuda.is_available():
-    print("GPU             : none visible -- static verification PASSED")
+    has_host_gpu = False
+    try:
+        import subprocess
+        res = subprocess.run(["nvidia-smi"], capture_output=True)
+        has_host_gpu = (res.returncode == 0)
+    except Exception:
+        pass
+    if has_host_gpu:
+        print("GPU             : Physical GPU detected by host, but PyTorch cannot initialize CUDA (RunPod node glitch).")
+        print("                  Static verification PASSED (kernels & wheel intact). Terminate/restart Pod to activate GPU.")
+    else:
+        print("GPU             : none visible (build environment) -- static verification PASSED")
     sys.exit(0)
 
 cap = torch.cuda.get_device_capability(0)

@@ -8,7 +8,7 @@ echo "=============================================================="
 echo " MiniMax H3 + LTX-2.3 ComfyUI  |  $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "=============================================================="
 
-# 1. Driver Warmup & CUDA 13 Driver Gate (Patch 3)
+# 1. Driver Warmup & CUDA 13.x+ Driver Gate (Patch 3)
 nvidia-smi >/dev/null 2>&1 || true
 
 DRV_FULL="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 | tr -d '[:space:]')"
@@ -16,15 +16,14 @@ DRV_MAJOR="${DRV_FULL%%.*}"
 if [ -n "${DRV_MAJOR}" ] && [ "${DRV_MAJOR}" -lt 580 ] 2>/dev/null; then
     echo "============================================================="
     echo " FATAL: NVIDIA driver ${DRV_FULL} detected."
-    echo " This image is CUDA 13 and requires driver >= 580."
+    echo " This image requires NVIDIA driver >= 580 (CUDA 13.0 - 13.4+)."
     echo ""
-    echo " Fix: terminate this pod and redeploy. In the RunPod console,"
-    echo " open 'Additional Filters' -> 'CUDA Version' and select 13.0"
-    echo " before choosing a GPU."
+    echo " Fix: In the RunPod console, deploy on an instance with"
+    echo " CUDA 13.0, 13.1, 13.2, 13.3, 13.4 or higher (driver >= 580)."
     echo "============================================================="
     exit 1
 fi
-echo "driver ${DRV_FULL} OK for CUDA 13"
+echo "NVIDIA Driver ${DRV_FULL} OK for CUDA 13.x+ (13.0 / 13.1 / 13.2 / 13.3 / 13.4+)"
 
 nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv,noheader 2>/dev/null || true
 
@@ -36,25 +35,43 @@ if [ -f /opt/build-manifest.txt ]; then
 fi
 
 python3 - <<'PYCHK'
-import sys
+import sys, subprocess
 print("Python          :", sys.version.split()[0])
 try:
     import torch
-    print("PyTorch         :", torch.__version__, "| CUDA", torch.version.cuda)
+    print("PyTorch         :", torch.__version__, "| CUDA Runtime", torch.version.cuda)
     if torch.cuda.is_available():
-        cap = torch.cuda.get_device_capability(0)
-        name = torch.cuda.get_device_name(0)
-        total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        print("GPU Device      : %s  sm_%d%d  %.1f GiB" % (name, cap[0], cap[1], total))
-        SM = cap[0] * 10 + cap[1]
-        if SM >= 89:
-            print("FP8 Tensor Cores: SUPPORTED - sageattn_qk_int8_pv_fp8_cuda++ will run natively")
-        else:
-            print("FP8 Tensor Cores: not present on sm_%d%d" % cap)
-            print("                  Set 'Patch Sage Attention KJ' -> sageattn_qk_int8_pv_fp16_cuda")
+        count = torch.cuda.device_count()
+        print(f"CUDA Available  : YES ({count} GPU(s) active)")
+        for idx in range(count):
+            cap = torch.cuda.get_device_capability(idx)
+            name = torch.cuda.get_device_name(idx)
+            total = torch.cuda.get_device_properties(idx).total_memory / (1024**3)
+            print("  GPU Device [%d]  : %s  sm_%d%d  %.1f GiB" % (idx, name, cap[0], cap[1], total))
+            SM = cap[0] * 10 + cap[1]
+            if SM >= 89:
+                print("  FP8 Tensor Cores: SUPPORTED - sageattn_qk_int8_pv_fp8_cuda++ will run natively")
+            else:
+                print("  FP8 Tensor Cores: not present on sm_%d%d" % cap)
+                print("                    Set 'Patch Sage Attention KJ' -> sageattn_qk_int8_pv_fp16_cuda")
     else:
-        print("GPU Device      : NONE VISIBLE")
-        SM = 0
+        has_gpu = False
+        try:
+            res = subprocess.run(["nvidia-smi"], capture_output=True)
+            has_gpu = (res.returncode == 0)
+        except Exception:
+            pass
+
+        if has_gpu:
+            print("=============================================================")
+            print(" WARNING: Physical GPU was detected by nvidia-smi, but PyTorch")
+            print(" failed to initialize CUDA (cudaErrorUnknown / driver communication error).")
+            print(" Reason: Known RunPod host node driver glitch (hung nvidia-uvm module).")
+            print(" Action: Terminate and restart this Pod on RunPod to be allocated")
+            print(" to a healthy physical host server.")
+            print("=============================================================")
+        else:
+            print("GPU Device      : NONE VISIBLE (Running in CPU mode)")
 except Exception as e:
     print("PyTorch         : FAILED ->", e)
 
