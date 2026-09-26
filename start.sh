@@ -120,10 +120,10 @@ if [ -d "$VOLUME_DIR/custom_nodes/comfyui-videohelpersuite" ] && [ -d "$VOLUME_D
     rm -rf "$VOLUME_DIR/custom_nodes/comfyui-videohelpersuite"
 fi
 
-# Ensure ComfyUI-Manager is updated on boot
+# Ensure ComfyUI-Manager is updated on boot (guarded with 5s timeout to prevent boot hangs)
 if [ -d "$COMFYUI_DIR/custom_nodes/ComfyUI-Manager/.git" ]; then
-    echo "[manager] Updating ComfyUI-Manager to latest commit..."
-    git -C "$COMFYUI_DIR/custom_nodes/ComfyUI-Manager" pull --ff-only 2>/dev/null || true
+    echo "[manager] Checking ComfyUI-Manager updates (5s timeout)..."
+    timeout 5s env GIT_TERMINAL_PROMPT=0 git -C "$COMFYUI_DIR/custom_nodes/ComfyUI-Manager" pull --ff-only 2>/dev/null || true
 fi
 
 # 3. Optional Model Fetch (MiniMax H3 & SEEDHUNTER Suite)
