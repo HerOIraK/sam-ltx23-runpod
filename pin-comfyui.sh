@@ -11,7 +11,7 @@
 set -euo pipefail
 
 COMFY_DIR="${COMFY_DIR:-/opt/ComfyUI}"
-MIN_VERSION="${COMFYUI_MIN_VERSION:-0.36.0}"
+MIN_VERSION="${COMFYUI_MIN_VERSION:-0.39.0}"
 PIN_REF="${COMFYUI_REF:-}"
 
 echo "=============================================================="

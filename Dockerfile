@@ -159,9 +159,9 @@ ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.cache/inductor
 # Copy baked ComfyUI to /opt/ComfyUI
 RUN mkdir -p /opt && cp -a /opt/comfyui-baked /opt/ComfyUI
 
-# Pin ComfyUI explicitly to v0.36.0
-ARG COMFYUI_MIN_VERSION=0.36.0
-ARG COMFYUI_REF=v0.36.0
+# Pin ComfyUI explicitly to v0.39.0
+ARG COMFYUI_MIN_VERSION=0.39.0
+ARG COMFYUI_REF=v0.39.0
 
 COPY filter-req.py /usr/local/bin/filter-req.py
 COPY pin-comfyui.sh /usr/local/bin/pin-comfyui.sh
@@ -174,9 +174,9 @@ RUN COMFYUI_MIN_VERSION="${COMFYUI_MIN_VERSION}" \
 # Upgrade huggingface_hub, frontend package, and complete workflow templates bundle
 RUN pip install --no-cache-dir --upgrade \
     "huggingface_hub[cli]" hf_transfer \
-    "comfyui-frontend-package>=1.52.7" \
-    "comfyui-workflow-templates[all]>=0.11.62" \
-    "comfyui-embedded-docs>=0.5.11"
+    "comfyui-frontend-package>=1.53.10" \
+    "comfyui-workflow-templates[all]>=0.11.76" \
+    "comfyui-embedded-docs>=0.5.12"
 
 # Install ComfyUI-Manager dependencies directly from tree if present
 RUN cd /opt/ComfyUI && [ -f manager_requirements.txt ] \

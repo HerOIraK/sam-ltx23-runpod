@@ -5,7 +5,7 @@ This repository contains all the configuration files and scripts needed to build
 ## Features
 
 - **CUDA 13.x+ Multi-Stage Build**: Built on `runpod/comfyui:cuda13.0` for full native compatibility with all host drivers $\ge 580$ (CUDA 13.0, 13.1, 13.2, 13.3, 13.4+).
-- **ComfyUI Pinned to `v0.36.0`**: Features the latest official ComfyUI release with native MiniMax H3 Fun ControlNet, embedded docs 0.5.11, and complete desktop workflow templates bundle (`comfyui-workflow-templates[all]`).
+- **ComfyUI Pinned to `v0.39.0`**: Features the latest official ComfyUI release with native DynamicGroup widgets, MiniMax H3 Fun ControlNet, embedded docs 0.5.12, and complete desktop workflow templates bundle (`comfyui-workflow-templates[all]`).
 - **SageAttention 2 Multi-Arch Compilation**: Compiled from git source targeting `TORCH_CUDA_ARCH_LIST="8.6;8.9;12.0"` for RTX 3090 (`sm_86`), RTX 4090 (`sm_89`), and RTX 5090 / Blackwell (`sm_120`). **The `;` is mandatory — see below.**
 - **Spectrum Sampler Acceleration**: Pinned `ComfyUI-Spectrum-MiniMax-H3` (`b5fd9db33267623eb3469ee7d6d4ddf397240025`).
 - **Stability Flags**: Pre-configured `--disable-dynamic-vram`, `--disable-async-offload`, `--disable-smart-memory`, and `--reserve-vram 6`.
@@ -115,10 +115,10 @@ pinned by digest it will never drift upward on its own, so the fix is to pin the
 ComfyUI ref explicitly:
 
 ```dockerfile
-ARG COMFYUI_REF=v0.36.0
+ARG COMFYUI_REF=v0.39.0
 ```
 
-`v0.36.0` is the newest tag on origin. When moving to a newer ComfyUI,
+`v0.39.0` is the newest tag on origin. When moving to a newer ComfyUI,
 bump `COMFYUI_REF` — do **not** lower `COMFYUI_MIN_VERSION`, which exists to stop
 the MiniMax H3 core nodes silently loading against a too-old ComfyUI.
 
